@@ -1,0 +1,6 @@
+{
+  "name": "SmartBill Pro",
+  "description": "A high-performance Billing Terminal & POS Admin Dashboard for modern businesses, featuring quick billing, service catalogs, inventory hub, staff directories, and custom sales analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
