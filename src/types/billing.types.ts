@@ -1,20 +1,26 @@
 export interface BillItem {
-  serviceId: string;
-  name: string;
-  price: number;
+  id?: number;
+  serviceId: number;
+  serviceName: string;
+  unitPrice: number;
   quantity: number;
+  lineTotal: number;
 }
 
 export interface Bill {
-  id: string;
-  timestamp: string;
-  customerName: string;
-  items: BillItem[];
+  id: number;
+  billNumber: string;
   subtotal: number;
   discountCode?: string;
   discountAmount: number;
   taxAmount: number;
   totalAmount: number;
-  paymentMethod: 'Cash' | 'UPI' | 'Card';
-  status: 'Paid' | 'Pending';
+  paymentMethod: string;
+  status: string;
+  createdAt: string;
+  customerName?: string;
+  customerPhone?: string;
+  staffName?: string;
+  branchName?: string;
+  items: BillItem[];
 }

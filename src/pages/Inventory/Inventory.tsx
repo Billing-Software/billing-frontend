@@ -1,21 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Search, Plus, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { InventoryItem } from '../../types';
+import { inventoryService } from '../../services/inventory.service';
 
-interface InventoryProps {
-  inventory: InventoryItem[];
-  onAddItem: (item: InventoryItem) => void;
-  onUpdateItem: (item: InventoryItem) => void;
-  onDeleteItem: (id: string) => void;
-}
+export default function Inventory() {
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-export default function Inventory({
-  inventory,
-  onAddItem,
-  onUpdateItem,
-  onDeleteItem
-}: InventoryProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
@@ -31,47 +23,64 @@ export default function Inventory({
   const [unit, setUnit] = useState<string>('Units');
   const [reorderLevel, setReorderLevel] = useState<number>(5);
 
+  const fetchInventory = async () => {
+    try {
+      setIsLoading(true);
+      const data = await inventoryService.getAll();
+      setInventory(data);
+    } catch (e) {
+      console.error('Error fetching inventory', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, []);
+
   const categories = Array.from(new Set(inventory.map(i => i.category)));
 
-  const handleSaveItem = (e: React.FormEvent) => {
+  const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !sku) return;
 
-    if (editingItem) {
-      const updated: InventoryItem = {
-        ...editingItem,
-        name,
-        sku: sku.toUpperCase(),
-        category,
-        currentStock,
-        unit,
-        reorderLevel
-      };
-      onUpdateItem(updated);
-      alert("Stock database item updated!");
-    } else {
-      const created: InventoryItem = {
-        id: `i${Date.now()}`,
-        name,
-        sku: sku.toUpperCase(),
-        category,
-        currentStock,
-        unit,
-        reorderLevel,
-        placeholderType: 'build'
-      };
-      onAddItem(created);
-      alert("New inventory SKU added successfully!");
-    }
+    try {
+      if (editingItem) {
+        await inventoryService.update(editingItem.id, {
+          name,
+          sku: sku.toUpperCase(),
+          category,
+          currentStock,
+          unit,
+          reorderLevel,
+          imageUrl: editingItem.imageUrl
+        });
+        alert("Stock database item updated!");
+      } else {
+        await inventoryService.create({
+          name,
+          sku: sku.toUpperCase(),
+          category,
+          currentStock,
+          unit,
+          reorderLevel
+        });
+        alert("New inventory SKU added successfully!");
+      }
 
-    setIsFormOpen(false);
-    setEditingItem(null);
-    setName('');
-    setSku('');
-    setCategory('Consumables');
-    setCurrentStock(10);
-    setUnit('Units');
-    setReorderLevel(5);
+      setIsFormOpen(false);
+      setEditingItem(null);
+      setName('');
+      setSku('');
+      setCategory('Consumables');
+      setCurrentStock(10);
+      setUnit('Units');
+      setReorderLevel(5);
+      fetchInventory();
+    } catch (err: any) {
+      alert("Error saving item: " + (err.response?.data || err.message));
+    }
   };
 
   const handleOpenEdit = (item: InventoryItem) => {
@@ -83,6 +92,16 @@ export default function Inventory({
     setUnit(item.unit);
     setReorderLevel(item.reorderLevel);
     setIsFormOpen(true);
+  };
+
+  const handleDeleteItem = async (id: number) => {
+    try {
+      await inventoryService.delete(id);
+      alert("Inventory record deleted successfully.");
+      fetchInventory();
+    } catch (err: any) {
+      alert("Error deleting item: " + (err.response?.data || err.message));
+    }
   };
 
   // Stock status badge calculations
@@ -114,9 +133,15 @@ export default function Inventory({
         <button
           onClick={() => {
             setEditingItem(null);
+            setName('');
+            setSku('');
+            setCategory('Consumables');
+            setCurrentStock(10);
+            setUnit('Units');
+            setReorderLevel(5);
             setIsFormOpen(true);
           }}
-          className="bg-[#006a61] text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:bg-opacity-95"
+          className="bg-[#006a61] text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:bg-opacity-95 cursor-pointer"
         >
           <Plus size={15} />
           <span>Add Stock Item</span>
@@ -144,7 +169,7 @@ export default function Inventory({
                   value={name} 
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Keratin Smooth Shampoo" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -156,7 +181,7 @@ export default function Inventory({
                   value={sku} 
                   onChange={(e) => setSku(e.target.value)}
                   placeholder="e.g. SHMP-001" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -166,7 +191,7 @@ export default function Inventory({
                 <select 
                   value={category} 
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
                 >
                   <option value="Consumables">Consumables</option>
                   <option value="Repair Parts">Repair Parts</option>
@@ -182,7 +207,7 @@ export default function Inventory({
                   value={currentStock} 
                   onChange={(e) => setCurrentStock(Number(e.target.value))}
                   placeholder="e.g. 15" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -194,7 +219,7 @@ export default function Inventory({
                   value={unit} 
                   onChange={(e) => setUnit(e.target.value)}
                   placeholder="e.g. Bottles, Pairs, Units" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -206,7 +231,7 @@ export default function Inventory({
                   value={reorderLevel} 
                   onChange={(e) => setReorderLevel(Number(e.target.value))}
                   placeholder="e.g. 5" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -215,13 +240,13 @@ export default function Inventory({
                 <button
                   type="button"
                   onClick={() => setIsFormOpen(false)}
-                  className="px-4 py-1.5 border border-[#c6c6cd] text-[#45464d] font-sans text-xs font-semibold rounded hover:bg-[#eff4ff]"
+                  className="px-4 py-1.5 border border-[#c6c6cd] text-[#45464d] font-sans text-xs font-semibold rounded hover:bg-[#eff4ff] cursor-pointer"
                 >
                   Close
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-[#006a61] text-white font-sans text-xs font-semibold rounded hover:bg-opacity-95"
+                  className="px-4 py-1.5 bg-[#006a61] text-white font-sans text-xs font-semibold rounded hover:bg-opacity-95 cursor-pointer"
                 >
                   Save Stock Item
                 </button>
@@ -259,102 +284,111 @@ export default function Inventory({
 
       {/* Main Stock Table view */}
       <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b bg-[#eff4ff]/60">
-              <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Warehouse Asset / SKU</th>
-              <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Warehouse Category</th>
-              <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Available Stock</th>
-              <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Unit Metric</th>
-              <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Stock Status</th>
-              <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredInventory.map((item, index) => {
-              const status = getStockStatus(item);
-              return (
-                <tr 
-                  key={item.id}
-                  className={`border-b hover:bg-[#eff4ff]/40 group ${index % 2 === 1 ? 'bg-[#f8f9ff]/60' : ''}`}
-                >
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center gap-3">
-                      {item.imageUrl ? (
-                        <img 
-                          referrerPolicy="no-referrer"
-                          src={item.imageUrl} 
-                          alt={item.name} 
-                          className="w-10 h-10 rounded-md object-cover border"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 bg-[#eff4ff]/80 text-[#131b2e] rounded-md flex items-center justify-center font-bold text-xs">
-                          {item.placeholderType === 'cleaning' ? '🧼' : item.placeholderType === 'scissors' ? '✂️' : '🛠️'}
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Loader2 className="animate-spin text-[#006a61]" size={28} />
+            <p className="text-xs text-[#7c839b] font-bold uppercase tracking-wider">Synchronizing Stock Sheets...</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b bg-[#eff4ff]/60">
+                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Warehouse Asset / SKU</th>
+                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Warehouse Category</th>
+                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Available Stock</th>
+                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Unit Metric</th>
+                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Stock Status</th>
+                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredInventory.map((item, index) => {
+                const status = getStockStatus(item);
+                return (
+                  <tr 
+                    key={item.id}
+                    className={`border-b hover:bg-[#eff4ff]/40 group ${index % 2 === 1 ? 'bg-[#f8f9ff]/60' : ''}`}
+                  >
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-3">
+                        {item.imageUrl ? (
+                          <img 
+                            referrerPolicy="no-referrer"
+                            src={item.imageUrl} 
+                            alt={item.name} 
+                            className="w-10 h-10 rounded-md object-cover border"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-[#eff4ff]/80 text-[#131b2e] rounded-md flex items-center justify-center font-bold text-xs">
+                            {item.placeholderType === 'cleaning' ? '🧼' : item.placeholderType === 'scissors' ? '✂️' : '🛠️'}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-bold text-[#0b1c30]">{item.name}</p>
+                          <p className="text-[10px] text-[#7c839b] font-semibold uppercase mt-0.5">{item.sku}</p>
                         </div>
-                      )}
-                      <div>
-                        <p className="text-xs font-bold text-[#0b1c30]">{item.name}</p>
-                        <p className="text-[10px] text-[#7c839b] font-semibold uppercase mt-0.5">{item.sku}</p>
                       </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  <td className="py-3.5 px-4 text-xs font-bold text-[#45464d]">
-                    <span className="bg-[#eff4ff] border px-2.5 py-0.5 rounded text-[10px]">
-                      {item.category}
-                    </span>
-                  </td>
+                    <td className="py-3.5 px-4 text-xs font-bold text-[#45464d]">
+                      <span className="bg-[#eff4ff] border px-2.5 py-0.5 rounded text-[10px]">
+                        {item.category}
+                      </span>
+                    </td>
 
-                  <td className="py-3.5 px-4 text-xs font-bold text-[rgb(11,28,48)] text-right">
-                    {item.currentStock}
-                  </td>
+                    <td className="py-3.5 px-4 text-xs font-bold text-[rgb(11,28,48)] text-right">
+                      {item.currentStock}
+                    </td>
 
-                  <td className="py-3.5 px-4 text-xs font-bold text-[#7c839b] text-right">
-                    {item.unit}
-                  </td>
+                    <td className="py-3.5 px-4 text-xs font-bold text-[#7c839b] text-right">
+                      {item.unit}
+                    </td>
 
-                  <td className="py-3.5 px-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${status.css}`}>
-                      {status.icon && <AlertTriangle size={11} />}
-                      <span>{status.label}</span>
-                    </span>
-                  </td>
+                    <td className="py-3.5 px-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${status.css}`}>
+                        {status.icon && <AlertTriangle size={11} />}
+                        <span>{status.label}</span>
+                      </span>
+                    </td>
 
-                  <td className="py-3.5 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1.5 opacity-60 group-hover:opacity-100 transition-all">
-                      <button
-                        onClick={() => handleOpenEdit(item)}
-                        className="p-1 text-[#7c839b] hover:text-[#006a61] hover:bg-[#eff4ff] rounded transition-colors"
-                        title="Update Stock Details"
-                      >
-                        <RotateCcw size={13} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Do you wish to delete inventory item "${item.name}"?`)) {
-                            onDeleteItem(item.id);
-                          }
-                        }}
-                        className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/40 rounded transition-colors"
-                        title="Delete SKU Record"
-                      >
-                        <Plus size={13} className="rotate-45" />
-                      </button>
-                    </div>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5 opacity-60 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={() => handleOpenEdit(item)}
+                          className="p-1 text-[#7c839b] hover:text-[#006a61] hover:bg-[#eff4ff] rounded transition-colors cursor-pointer"
+                          title="Update Stock Details"
+                        >
+                          <RotateCcw size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Do you wish to delete inventory item "${item.name}"?`)) {
+                              handleDeleteItem(item.id);
+                            }
+                          }}
+                          className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/40 rounded transition-colors cursor-pointer"
+                          title="Delete SKU Record"
+                        >
+                          <Plus size={13} className="rotate-45" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {filteredInventory.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-xs text-[#7c839b] font-semibold">
+                    No inventory records configured matching your key filters.
                   </td>
                 </tr>
-              );
-            })}
-
-            {filteredInventory.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-12 text-center text-xs text-[#7c839b] font-semibold">
-                  No inventory records configured matching your key filters.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </motion.div>
   );

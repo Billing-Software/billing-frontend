@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -9,25 +9,28 @@ import {
   Receipt, 
   Send, 
   CheckCircle,
-  Percent
+  Percent,
+  Loader2
 } from 'lucide-react';
 import { Service, Customer, BillItem, Bill } from '../../types';
+import { customerService } from '../../services/customer.service';
+import { serviceCatalogService } from '../../services/service.service';
+import { billService } from '../../services/bill.service';
+import { branchService } from '../../services/branch.service';
+import { useAuth } from '../../hooks/useAuth';
 
-interface BillingProps {
-  services: Service[];
-  customers: Customer[];
-  onAddBill: (bill: Bill) => void;
-  onAddCustomer: (customer: Customer) => void;
-}
+export default function Billing() {
+  const { currentBranch } = useAuth();
 
-export default function Billing({ 
-  services, 
-  customers, 
-  onAddBill, 
-  onAddCustomer 
-}: BillingProps) {
+  // API Scoped States
+  const [services, setServices] = useState<Service[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
   // POS States
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('1'); // Default to walk-in
   const [cart, setCart] = useState<BillItem[]>([]);
   const [filterQuery, setFilterQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -51,11 +54,53 @@ export default function Billing({
   // Invoice success feedback state
   const [generatedBill, setGeneratedBill] = useState<Bill | null>(null);
 
+  // Fetch initial data
+  const fetchInitialData = async () => {
+    try {
+      setIsLoading(true);
+      const [servicesData, customersData, branchesData] = await Promise.all([
+        serviceCatalogService.getAll(),
+        customerService.getAll(),
+        branchService.getAll()
+      ]);
+      
+      setServices(servicesData);
+      setBranches(branchesData);
+
+      let activeCusts = customersData;
+      let walkIn = customersData.find((c: any) => c.isWalkIn);
+
+      setCustomers(activeCusts);
+
+      if (walkIn) {
+        setSelectedCustomerId(walkIn.id);
+      } else if (activeCusts.length > 0) {
+        setSelectedCustomerId(activeCusts[0].id);
+      }
+
+      if (branchesData.length > 0) {
+        // Find branch matching currentBranch (Main / Downtown)
+        const matched = branchesData.find(
+          (b: any) => b.name.toLowerCase().includes(currentBranch.toLowerCase())
+        ) || branchesData[0];
+        setSelectedBranchId(matched.id);
+      }
+    } catch (e) {
+      console.error('Error fetching billing data', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [currentBranch]);
+
   // Categories extraction
   const categories = ['All', ...Array.from(new Set(services.filter(s => s.status === 'Active').map(s => s.category)))];
 
   // Selected customer info
-  const activeCustomer = customers.find(c => c.id === selectedCustomerId) || customers[0];
+  const activeCustomer = customers.find(c => c.id === selectedCustomerId) || customers[0] || { name: 'Walk-In Customer', phone: 'N/A' };
 
   // Helper: Icons mapper
   const getCategoryIcon = (iconName: string) => {
@@ -76,27 +121,28 @@ export default function Billing({
       if (existing) {
         return prev.map(item => 
           item.serviceId === service.id 
-            ? { ...item, quantity: item.quantity + 1 } 
+            ? { ...item, quantity: item.quantity + 1, lineTotal: (item.quantity + 1) * item.unitPrice } 
             : item
         );
       } else {
         return [...prev, {
           serviceId: service.id,
-          name: service.name,
-          price: service.basePrice,
-          quantity: 1
+          serviceName: service.name,
+          unitPrice: service.basePrice,
+          quantity: 1,
+          lineTotal: service.basePrice
         }];
       }
     });
   };
 
   // Adjust item quantity
-  const handleUpdateQty = (serviceId: string, delta: number) => {
+  const handleUpdateQty = (serviceId: number, delta: number) => {
     setCart(prev => {
       return prev.map(item => {
         if (item.serviceId === serviceId) {
           const nextQty = item.quantity + delta;
-          return nextQty > 0 ? { ...item, quantity: nextQty } : item;
+          return nextQty > 0 ? { ...item, quantity: nextQty, lineTotal: nextQty * item.unitPrice } : item;
         }
         return item;
       }).filter(item => item.quantity > 0);
@@ -104,58 +150,109 @@ export default function Billing({
   };
 
   // Remove Item
-  const handleRemoveItem = (serviceId: string) => {
+  const handleRemoveItem = (serviceId: number) => {
     setCart(prev => prev.filter(item => item.serviceId !== serviceId));
   };
 
   // Calculations
-  const subtotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const subtotal = cart.reduce((acc, item) => acc + item.lineTotal, 0);
   const discountAmount = subtotal * (activeDiscountPercent / 100);
   const taxAmount = (subtotal - discountAmount) * 0.05; // 5% flat output CGST/SGST proxy
   const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount);
 
   // Trigger New Customer Creation
-  const handleCreateCustomer = (e: React.FormEvent) => {
+  const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName || !newCustPhone) return;
-    const newCust: Customer = {
-      id: Date.now().toString(),
-      name: newCustName,
-      phone: newCustPhone,
-      isWalkIn: false
-    };
-    onAddCustomer(newCust);
-    setSelectedCustomerId(newCust.id);
-    setIsAddingCustomer(false);
-    setNewCustName('');
-    setNewCustPhone('');
+    try {
+      const newCust = await customerService.create({
+        name: newCustName,
+        phone: newCustPhone,
+        isWalkIn: false
+      });
+      setCustomers(prev => [...prev, newCust]);
+      setSelectedCustomerId(newCust.id);
+      setIsAddingCustomer(false);
+      setNewCustName('');
+      setNewCustPhone('');
+    } catch (err: any) {
+      alert("Error saving customer: " + (err.response?.data || err.message));
+    }
   };
 
   // Trigger Bill compilation
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) {
       alert("Please add services to the current bill first!");
       return;
     }
+    if (!selectedBranchId) {
+      alert("No branch selected. Please verify branch configuration.");
+      return;
+    }
+    if (!selectedCustomerId) {
+      alert("No client selected. Please choose or register a client.");
+      return;
+    }
 
-    const newInvoiceId = `#INV-${Math.floor(2000 + Math.random() * 1000)}`;
-    const bill: Bill = {
-      id: newInvoiceId,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      customerName: activeCustomer.name,
-      items: cart,
-      subtotal,
-      discountCode: activeDiscountPercent > 0 ? activeDiscountCode : undefined,
-      discountAmount,
-      taxAmount,
-      totalAmount,
-      paymentMethod,
-      status: 'Paid'
-    };
+    try {
+      const itemsDto = cart.map(item => ({
+        serviceId: item.serviceId,
+        serviceName: item.serviceName,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineTotal: item.lineTotal
+      }));
 
-    onAddBill(bill);
-    setGeneratedBill(bill);
-    setCart([]); // Clear cart
+      // Generate Invoice Display Reference
+      const billNumber = `INV-${Date.now().toString().slice(-6)}`;
+
+      const billPayload = {
+        branchId: selectedBranchId,
+        customerId: selectedCustomerId,
+        createdByStaffId: null,
+        billNumber,
+        subtotal,
+        discountCode: activeDiscountPercent > 0 ? activeDiscountCode : null,
+        discountAmount,
+        taxAmount,
+        totalAmount,
+        paymentMethod,
+        status: 'Paid',
+        items: itemsDto
+      };
+
+      const created = await billService.create(billPayload);
+
+      // Construct frontend state mapping
+      const mappedBill: Bill = {
+        id: created.id,
+        billNumber: created.billNumber,
+        subtotal: created.subtotal,
+        discountCode: created.discountCode || undefined,
+        discountAmount: created.discountAmount,
+        taxAmount: created.taxAmount,
+        totalAmount: created.totalAmount,
+        paymentMethod: created.paymentMethod,
+        status: created.status,
+        createdAt: created.createdAt,
+        customerName: activeCustomer.name,
+        customerPhone: activeCustomer.phone,
+        items: created.items.map((i: any) => ({
+          serviceId: i.serviceId,
+          serviceName: i.serviceName,
+          unitPrice: i.unitPrice,
+          quantity: i.quantity,
+          lineTotal: i.lineTotal
+        }))
+      };
+
+      setGeneratedBill(mappedBill);
+      setCart([]); // Clear cart
+      alert("Invoice processed successfully!");
+    } catch (err: any) {
+      alert("Error compiling bill: " + (err.response?.data || err.message));
+    }
   };
 
   // Discount code application helper
@@ -195,6 +292,15 @@ export default function Billing({
     c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
     c.phone.includes(clientSearchQuery)
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
+        <Loader2 className="animate-spin text-[#006a61]" size={36} />
+        <p className="text-sm text-[#7c839b] font-bold uppercase tracking-wider">Synchronizing POS Terminals...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full items-start">
@@ -251,7 +357,7 @@ export default function Billing({
                       required
                       value={newCustPhone}
                       onChange={(e) => setNewCustPhone(e.target.value)}
-                      placeholder="e.g. (555) 000-0000" 
+                      placeholder="e.g. 9876543210" 
                       className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
                     />
                   </div>
@@ -385,7 +491,7 @@ export default function Billing({
                 <span>Current Bill</span>
               </h2>
               <span className="font-sans text-[10px] font-bold text-[#45464d] bg-[#eff4ff] px-2 py-0.5 rounded-md">
-                #INV-{selectedCustomerId === '1' ? '2049' : Math.floor(2000 + Number(selectedCustomerId))}
+                #INV-LIVE
               </span>
             </div>
 
@@ -405,9 +511,9 @@ export default function Billing({
                   className="flex items-start justify-between p-2 bg-[#f8f9ff] border border-[#e2e8f0]/40 rounded-lg hover:border-[#006a61]/35 group"
                 >
                   <div className="flex-1 min-w-0 pr-2">
-                    <h4 className="font-sans text-xs font-bold text-[#0b1c30] truncate leading-tight">{item.name}</h4>
+                    <h4 className="font-sans text-xs font-bold text-[#0b1c30] truncate leading-tight">{item.serviceName}</h4>
                     <div className="flex items-center gap-1.5 mt-1 text-[#7c839b]">
-                      <span className="text-[10px] font-semibold">₹{item.price.toLocaleString()}</span>
+                      <span className="text-[10px] font-semibold">₹{item.unitPrice.toLocaleString()}</span>
                       <span className="text-[9px] font-semibold">x</span>
                       {/* Counter triggers adjustment */}
                       <div className="flex items-center bg-[#eff4ff] rounded border border-[#e2e8f0]">
@@ -429,7 +535,7 @@ export default function Billing({
                   </div>
 
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="text-xs font-bold text-[#0b1c30]">₹{(item.price * item.quantity).toLocaleString()}</span>
+                    <span className="text-xs font-bold text-[#0b1c30]">₹{item.lineTotal.toLocaleString()}</span>
                     <button 
                       onClick={() => handleRemoveItem(item.serviceId)}
                       className="text-[#ba1a1a] opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
@@ -453,17 +559,17 @@ export default function Billing({
           <div className="border-t border-[#e2e8f0]/50 pt-3 mt-4 space-y-3">
             {/* Promo Code Coupon applied */}
             <div className="flex items-center gap-2">
-              <Percent size={14} className="text-[#45464d]" />
+              <Percent size={14} className="text-[#45464d] shrink-0" />
               <input 
                 type="text"
                 placeholder="Discount Code or %"
                 value={discountCode}
                 onChange={(e) => setDiscountCode(e.target.value)}
-                className="flex-1 py-1 px-2.5 bg-white border border-[#c6c6cd] rounded font-sans text-xs font-semibold placeholder-[#7c839b]/70 outline-none"
+                className="flex-1 min-w-0 py-1 px-2.5 bg-white border border-[#c6c6cd] rounded font-sans text-xs font-semibold placeholder-[#7c839b]/70 outline-none"
               />
               <button 
                 onClick={handleApplyPromo}
-                className="px-3 py-1 bg-[#eff4ff]/80 border border-[#c6c6cd] rounded text-xs font-bold hover:bg-[#dce9ff]"
+                className="px-3 py-1 bg-[#eff4ff]/80 border border-[#c6c6cd] rounded text-xs font-bold hover:bg-[#dce9ff] shrink-0"
               >
                 Apply
               </button>
@@ -480,7 +586,7 @@ export default function Billing({
                 <span>-₹{discountAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span>Tax (5% Local Output)</span>
+                <span>Tax (5% Flat Local)</span>
                 <span className="text-[#0b1c30]">₹{taxAmount.toLocaleString()}</span>
               </div>
             </div>
@@ -564,7 +670,7 @@ export default function Billing({
                 <CheckCircle size={28} />
               </div>
               <h3 className="font-display text-lg font-black text-[#0b1c30]">Bill Compiled!</h3>
-              <p className="text-xs text-[#7c839b] mt-1">Invoice {generatedBill.id} has been generated successfully and queued for secure WhatsApp deliverability.</p>
+              <p className="text-xs text-[#7c839b] mt-1">Invoice {generatedBill.billNumber} has been generated successfully and queued for secure WhatsApp deliverability.</p>
               
               <div className="bg-[#f8f9ff] border p-4 rounded-lg my-4 text-left space-y-1.5 font-sans">
                 <div className="flex justify-between text-xs text-[#45464d] font-bold">

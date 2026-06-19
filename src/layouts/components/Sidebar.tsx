@@ -10,7 +10,8 @@ import {
   HelpCircle,
   Plus,
   Terminal,
-  LogOut
+  LogOut,
+  Building2
 } from 'lucide-react';
 import { User } from '../../types';
 
@@ -98,14 +99,23 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
 
         {user && (
           <div className="mt-4 pt-3 flex items-center gap-2.5 px-1 border-t border-[#e2e8f0]/40">
-            <img 
-              referrerPolicy="no-referrer"
-              src={user.avatarUrl} 
-              alt={user.name} 
-              className="w-8 h-8 rounded-full object-cover border border-[#c6c6cd]"
-            />
+            {user.avatarUrl && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
+              <img 
+                referrerPolicy="no-referrer"
+                src={user.avatarUrl} 
+                alt={user.name || user.username} 
+                className="w-8 h-8 rounded-full object-cover border border-[#c6c6cd]"
+              />
+            ) : (
+              <div 
+                title={user.businessName || "Workspace"}
+                className="w-8 h-8 rounded-full border border-[#c6c6cd] bg-[#eff4ff] text-[#006a61] flex items-center justify-center shadow-sm shrink-0"
+              >
+                <Building2 size={16} />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
-              <p className="font-sans text-xs font-semibold text-[#0b1c30] truncate">{user.name}</p>
+              <p className="font-sans text-xs font-semibold text-[#0b1c30] truncate">{user.name || user.username}</p>
               <p className="font-sans text-[10px] text-[#45464d] leading-none truncate">{user.role}</p>
             </div>
             <button 

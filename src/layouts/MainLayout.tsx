@@ -1,12 +1,25 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X, Terminal, LogOut } from 'lucide-react';
+import { Outlet } from 'react-router-dom';
+import { 
+  X, 
+  Terminal, 
+  LogOut, 
+  Building2,
+  LayoutDashboard,
+  Receipt,
+  Users,
+  Sparkles,
+  Boxes,
+  SquareUser,
+  Settings
+} from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { User } from '../types';
 
 interface MainLayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onLogout: () => void;
@@ -49,7 +62,7 @@ export default function MainLayout({
       />
 
       {/* 2. Primary Workspace Panel */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
+      <div className="flex flex-col flex-1 min-w-0 w-full overflow-hidden relative">
         <Header 
           currentBranch={currentBranch}
           onChangeBranch={setCurrentBranch}
@@ -69,8 +82,8 @@ export default function MainLayout({
         />
 
         {/* Dynamic Inner views container with scroll support */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f8f9ff]">
-          {children}
+        <main className="flex-1 overflow-y-auto w-full min-w-0 overflow-x-hidden p-4 md:p-8 bg-[#f8f9ff]">
+          {children || <Outlet />}
         </main>
       </div>
 
@@ -124,43 +137,57 @@ export default function MainLayout({
                 {/* Mobile Menu Links */}
                 <nav className="space-y-1">
                   {[
-                    { id: 'dashboard', label: 'Overview Metrics' },
-                    { id: 'billing', label: 'Cash Register POS' },
-                    { id: 'customers', label: 'Customer CRM' },
-                    { id: 'services', label: 'Services Catalog' },
-                    { id: 'inventory', label: 'Inventory DB' },
-                    { id: 'staff', label: 'Authorized Staff' },
-                    { id: 'settings', label: 'Workspace Configuration' },
-                  ].map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setIsMobileMenuOpen(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all ${
-                        activeTab === tab.id 
-                          ? 'bg-[#86f2e4]/30 text-[#006f66]' 
-                          : 'text-[#45464d] hover:bg-[#eff4ff]'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                    { id: 'billing', label: 'Billing', icon: Receipt },
+                    { id: 'customers', label: 'Customers', icon: Users },
+                    { id: 'services', label: 'Services', icon: Sparkles },
+                    { id: 'inventory', label: 'Inventory', icon: Boxes },
+                    { id: 'staff', label: 'Staff', icon: SquareUser },
+                    { id: 'settings', label: 'Settings', icon: Settings },
+                  ].map(tab => {
+                    const IconComponent = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
+                          isActive 
+                            ? 'bg-[#86f2e4]/30 text-[#006f66]' 
+                            : 'text-[#45464d] hover:bg-[#eff4ff] hover:text-[#0b1c30]'
+                        }`}
+                      >
+                        <IconComponent size={18} className={isActive ? 'text-[#006f66]' : 'text-[#76777d]'} />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
                 </nav>
               </div>
 
               {/* Mobile Logout HUD */}
               <div className="border-t pt-4">
                 <div className="flex items-center gap-3 mb-4">
-                  <img 
-                    referrerPolicy="no-referrer"
-                    src={currentUser.avatarUrl} 
-                    alt={currentUser.name} 
-                    className="w-8 h-8 rounded-full border"
-                  />
+                  {currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '' && currentUser.avatarUrl !== 'null' && currentUser.avatarUrl !== 'undefined' ? (
+                    <img 
+                      referrerPolicy="no-referrer"
+                      src={currentUser.avatarUrl} 
+                      alt={currentUser.name || currentUser.username} 
+                      className="w-8 h-8 rounded-full border object-cover"
+                    />
+                  ) : (
+                    <div 
+                      title={currentUser.businessName || "Workspace"}
+                      className="w-8 h-8 rounded-full border border-[#c6c6cd] bg-[#eff4ff] text-[#006a61] flex items-center justify-center shadow-sm shrink-0"
+                    >
+                      <Building2 size={16} />
+                    </div>
+                  )}
                   <div>
-                    <h5 className="text-xs font-bold text-[#0b1c30]">{currentUser.name}</h5>
+                    <h5 className="text-xs font-bold text-[#0b1c30]">{currentUser.name || currentUser.username}</h5>
                     <p className="text-[10px] text-[#7c839b] font-semibold">{currentUser.role}</p>
                   </div>
                 </div>

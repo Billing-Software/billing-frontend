@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, Grid, Share2, Plus, Menu, LogOut } from 'lucide-react';
+import { Search, Bell, Grid, Share2, Plus, Menu, LogOut, Building2 } from 'lucide-react';
 import { User } from '../../types';
 
 interface HeaderProps {
@@ -128,12 +128,21 @@ export default function Header({
         {/* Simple User Portrait popup preview trigger */}
         {user && (
           <div className="flex items-center gap-2 border-l border-[#e2e8f0]/40 pl-3">
-            <img 
-              referrerPolicy="no-referrer"
-              src={user.avatarUrl} 
-              alt={user.name} 
-              className="w-8 h-8 rounded-full border border-[#c6c6cd] object-cover hover:opacity-85 transition-opacity cursor-pointer text-xs"
-            />
+            {user.avatarUrl && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
+              <img 
+                referrerPolicy="no-referrer"
+                src={user.avatarUrl} 
+                alt={user.name || user.username} 
+                className="w-8 h-8 rounded-full border border-[#c6c6cd] object-cover hover:opacity-85 transition-opacity cursor-pointer text-xs"
+              />
+            ) : (
+              <div 
+                title={user.businessName || "Workspace"}
+                className="w-8 h-8 rounded-full border border-[#c6c6cd] bg-[#eff4ff] text-[#006a61] flex items-center justify-center hover:opacity-85 transition-opacity cursor-pointer shadow-sm"
+              >
+                <Building2 size={16} />
+              </div>
+            )}
             {/* Quick Mobile Logout indicator */}
             <button
               onClick={onLogout}

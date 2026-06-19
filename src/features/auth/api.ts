@@ -1,18 +1,12 @@
+import { apiClient } from '../../services/api.client';
 import { User } from '../../types';
 
-export const loginApi = async (email: string, password: string): Promise<User> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (email === 'admin@smartbill.com' && password === 'admin') {
-        resolve({
-          name: 'Sarah Jenkins',
-          email: 'admin@smartbill.com',
-          role: 'Platform Owner',
-          avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150'
-        });
-      } else {
-        reject(new Error('Invalid email or password'));
-      }
-    }, 1000);
-  });
+export const loginApi = async (username: string, password: string): Promise<User> => {
+  const response = await apiClient.post<User>('/auth/login', { username, password });
+  return response.data;
+};
+
+export const registerApi = async (registerData: any): Promise<User> => {
+  const response = await apiClient.post<User>('/auth/register', registerData);
+  return response.data;
 };

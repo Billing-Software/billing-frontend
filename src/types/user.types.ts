@@ -1,6 +1,10 @@
 export interface User {
-  name: string;
+  username: string;
   email: string;
   role: string;
-  avatarUrl: string;
+  businessId: number;
+  businessName: string;
+  name?: string;
+  avatarUrl?: string;
+  token?: string;
 }

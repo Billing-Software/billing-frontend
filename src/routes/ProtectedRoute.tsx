@@ -1,17 +1,17 @@
 import React from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import Login from '../pages/Login/Login';
 
 interface ProtectedRouteProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { currentUser, setCurrentUser } = useAuth();
+  const { currentUser } = useAuth();
 
   if (!currentUser) {
-    return <Login onLoginSuccess={(usr) => setCurrentUser(usr)} />;
+    return <Navigate to="/login" replace />;
   }
 
-  return <>{children}</>;
+  return children ? <>{children}</> : <Outlet />;
 }

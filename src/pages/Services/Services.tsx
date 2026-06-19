@@ -1,21 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, Trash2, Edit2, ArrowUpDown } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ArrowUpDown, Loader2 } from 'lucide-react';
 import { Service } from '../../types';
+import { serviceCatalogService } from '../../services/service.service';
 
-interface ServicesProps {
-  services: Service[];
-  onAddService: (service: Service) => void;
-  onUpdateService: (service: Service) => void;
-  onDeleteService: (id: string) => void;
-}
+export default function Services() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-export default function Services({
-  services,
-  onAddService,
-  onUpdateService,
-  onDeleteService
-}: ServicesProps) {
   // Filters & State
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -33,56 +25,74 @@ export default function Services({
   const [formTax, setFormTax] = useState<number>(5.0);
   const [formStatus, setFormStatus] = useState<'Active' | 'Inactive'>('Active');
 
-  // Categories list
-  const categories = Array.from(new Set(services.map(s => s.category)));
-
   // Sorting
   const [sortField, setSortField] = useState<'name' | 'basePrice'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
+  const fetchServices = async () => {
+    try {
+      setIsLoading(true);
+      const data = await serviceCatalogService.getAll();
+      setServices(data);
+    } catch (e) {
+      console.error('Error loading services', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
+
+  // Categories list derived dynamically
+  const categories = Array.from(new Set(services.map(s => s.category)));
+
   // Handle Create or Update save
-  const handleSaveService = (e: React.FormEvent) => {
+  const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName || !formSku) return;
 
-    if (editingService) {
-      // Edit mode
-      const updated: Service = {
-        ...editingService,
-        name: formName,
-        sku: formSku,
-        category: formCategory,
-        basePrice: Number(formPrice),
-        taxRate: Number(formTax),
-        status: formStatus
-      };
-      onUpdateService(updated);
-      alert("Service catalog updated successfully!");
-    } else {
-      // Add mode
-      const created: Service = {
-        id: `s${Date.now()}`,
-        name: formName,
-        sku: formSku.toUpperCase(),
-        category: formCategory,
-        basePrice: Number(formPrice),
-        taxRate: Number(formTax),
-        status: formStatus,
-        iconName: 'spa' // default icon
-      };
-      onAddService(created);
-      alert("New service added successfully!");
-    }
+    try {
+      if (editingService) {
+        // Edit mode
+        await serviceCatalogService.update(editingService.id, {
+          name: formName,
+          sku: formSku,
+          category: formCategory,
+          basePrice: Number(formPrice),
+          taxRate: Number(formTax),
+          status: formStatus,
+          iconName: editingService.iconName || 'spa'
+        });
+        alert("Service catalog updated successfully!");
+      } else {
+        // Add mode
+        await serviceCatalogService.create({
+          name: formName,
+          sku: formSku.toUpperCase(),
+          category: formCategory,
+          basePrice: Number(formPrice),
+          taxRate: Number(formTax),
+          status: formStatus,
+          iconName: 'spa' // default icon
+        });
+        alert("New service added successfully!");
+      }
 
-    // Reset Form
-    setIsFormOpen(false);
-    setEditingService(null);
-    setFormName('');
-    setFormSku('');
-    setFormCategory('Hair Care');
-    setFormPrice(35.00);
-    setFormTax(5.0);
-    setFormStatus('Active');
+      // Reset Form & Reload
+      setIsFormOpen(false);
+      setEditingService(null);
+      setFormName('');
+      setFormSku('');
+      setFormCategory('Hair Care');
+      setFormPrice(35.00);
+      setFormTax(5.0);
+      setFormStatus('Active');
+      fetchServices();
+    } catch (err: any) {
+      alert("Error saving service: " + (err.response?.data || err.message));
+    }
   };
 
   // Open Edit Mode preloaded
@@ -95,6 +105,16 @@ export default function Services({
     setFormTax(service.taxRate);
     setFormStatus(service.status);
     setIsFormOpen(true);
+  };
+
+  const handleDeleteService = async (id: number) => {
+    try {
+      await serviceCatalogService.delete(id);
+      alert("Service removed successfully.");
+      fetchServices();
+    } catch (err: any) {
+      alert("Error deleting service: " + (err.response?.data || err.message));
+    }
   };
 
   // Filter Catalog
@@ -140,9 +160,15 @@ export default function Services({
         <button
           onClick={() => {
             setEditingService(null);
+            setFormName('');
+            setFormSku('');
+            setFormCategory('Hair Care');
+            setFormPrice(35.00);
+            setFormTax(5.0);
+            setFormStatus('Active');
             setIsFormOpen(true);
           }}
-          className="bg-[#006a61] text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:bg-opacity-95"
+          className="bg-[#006a61] text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:bg-opacity-95 cursor-pointer"
         >
           <Plus size={15} />
           <span>Add New Service</span>
@@ -170,7 +196,7 @@ export default function Services({
                   value={formName} 
                   onChange={(e) => setFormName(e.target.value)}
                   placeholder="e.g. Standard Diagnostics" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -182,7 +208,7 @@ export default function Services({
                   value={formSku} 
                   onChange={(e) => setFormSku(e.target.value)}
                   placeholder="e.g. SKU-DIA-001" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -192,7 +218,7 @@ export default function Services({
                 <select 
                   value={formCategory} 
                   onChange={(e) => setFormCategory(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
                 >
                   <option value="Hair Care">Hair Care</option>
                   <option value="Beard & Shave">Beard & Shave</option>
@@ -212,7 +238,7 @@ export default function Services({
                   value={formPrice} 
                   onChange={(e) => setFormPrice(Number(e.target.value))}
                   placeholder="e.g. 45.00" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -225,7 +251,7 @@ export default function Services({
                   value={formTax} 
                   onChange={(e) => setFormTax(Number(e.target.value))}
                   placeholder="e.g. 5.0" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
@@ -235,7 +261,7 @@ export default function Services({
                 <select 
                   value={formStatus} 
                   onChange={(e) => setFormStatus(e.target.value as 'Active' | 'Inactive')}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9"
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
                 >
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
@@ -246,13 +272,13 @@ export default function Services({
                 <button
                   type="button"
                   onClick={() => setIsFormOpen(false)}
-                  className="px-4 py-1.5 border border-[#c6c6cd] text-[#45464d] font-sans text-xs font-semibold rounded hover:bg-[#eff4ff]"
+                  className="px-4 py-1.5 border border-[#c6c6cd] text-[#45464d] font-sans text-xs font-semibold rounded hover:bg-[#eff4ff] cursor-pointer"
                 >
                   Close
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-[#006a61] text-white font-sans text-xs font-semibold rounded hover:bg-opacity-95"
+                  className="px-4 py-1.5 bg-[#006a61] text-white font-sans text-xs font-semibold rounded hover:bg-opacity-95 cursor-pointer"
                 >
                   Save Service
                 </button>
@@ -300,112 +326,119 @@ export default function Services({
 
       {/* Main Services Table */}
       <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b bg-[#eff4ff]/60">
-                <th 
-                  onClick={() => handleToggleSort('name')}
-                  className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase select-none cursor-pointer hover:text-[#0b1c30]"
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Service Name</span>
-                    <ArrowUpDown size={12} />
-                  </div>
-                </th>
-                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Category</th>
-                <th 
-                  onClick={() => handleToggleSort('basePrice')}
-                  className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right select-none cursor-pointer hover:text-[#0b1c30]"
-                >
-                  <div className="flex items-center gap-1 justify-end">
-                    <span>Base Price</span>
-                    <ArrowUpDown size={12} />
-                  </div>
-                </th>
-                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Tax Rates</th>
-                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Status</th>
-                <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredServices.map((service, index) => (
-                <tr 
-                  key={service.id}
-                  className={`border-b hover:bg-[#eff4ff]/40 group ${index % 2 === 1 ? 'bg-[#f8f9ff]/60' : ''}`}
-                >
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded bg-[#eff4ff] flex items-center justify-center text-[#45464d]">
-                        {service.iconName === 'spa' ? '🌸' : service.iconName === 'content_cut' ? '✂️' : service.iconName === 'build' ? '🛠️' : '📦'}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-[#0b1c30]">{service.name}</p>
-                        <p className="text-[10px] text-[#76777d] font-semibold uppercase mt-0.5">{service.sku}</p>
-                      </div>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Loader2 className="animate-spin text-[#006a61]" size={28} />
+            <p className="text-xs text-[#7c839b] font-bold uppercase tracking-wider">Synchronizing Catalog Records...</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b bg-[#eff4ff]/60">
+                  <th 
+                    onClick={() => handleToggleSort('name')}
+                    className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase select-none cursor-pointer hover:text-[#0b1c30]"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Service Name</span>
+                      <ArrowUpDown size={12} />
                     </div>
-                  </td>
-                  
-                  <td className="py-3.5 px-4 text-xs font-semibold text-[#45464d]">
-                    <span className="bg-[#eff4ff] border px-2 py-0.5 rounded text-[10px]">
-                      {service.category}
-                    </span>
-                  </td>
-                  
-                  <td className="py-3.5 px-4 text-xs font-bold text-[#006f66] text-right">
-                    ₹{service.basePrice.toLocaleString()}
-                  </td>
-                  
-                  <td className="py-3.5 px-4 text-xs font-semibold text-[#7c839b] text-right">
-                    {service.taxRate.toFixed(1)}%
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      service.status === 'Active' 
-                        ? 'bg-[#e6f4ea] text-[#1e8e3e]' 
-                        : 'bg-[#eff4ff] text-[#7c839b]'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${service.status === 'Active' ? 'bg-[#1e8e3e]' : 'bg-[#7c839b]'}`}></span>
-                      <span>{service.status}</span>
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleOpenEdit(service)}
-                        className="p-1 text-[#7c839b] hover:text-[#006a61] hover:bg-[#eff4ff] rounded transitions"
-                        title="Edit Details"
-                      >
-                        <Edit2 size={13} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Do you really want to delete service "${service.name}"?`)) {
-                            onDeleteService(service.id);
-                          }
-                        }}
-                        className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/50 rounded transitions"
-                        title="Remove Service"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                  </th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Category</th>
+                  <th 
+                    onClick={() => handleToggleSort('basePrice')}
+                    className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right select-none cursor-pointer hover:text-[#0b1c30]"
+                  >
+                    <div className="flex items-center gap-1 justify-end">
+                      <span>Base Price</span>
+                      <ArrowUpDown size={12} />
                     </div>
-                  </td>
+                  </th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Tax Rates</th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Status</th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Actions</th>
                 </tr>
-              ))}
+              </thead>
+              <tbody>
+                {filteredServices.map((service, index) => (
+                  <tr 
+                    key={service.id}
+                    className={`border-b hover:bg-[#eff4ff]/40 group ${index % 2 === 1 ? 'bg-[#f8f9ff]/60' : ''}`}
+                  >
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded bg-[#eff4ff] flex items-center justify-center text-[#45464d]">
+                          {service.iconName === 'spa' ? '🌸' : service.iconName === 'content_cut' ? '✂️' : service.iconName === 'build' ? '🛠️' : '📦'}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-[#0b1c30]">{service.name}</p>
+                          <p className="text-[10px] text-[#76777d] font-semibold uppercase mt-0.5">{service.sku}</p>
+                        </div>
+                      </div>
+                    </td>
+                    
+                    <td className="py-3.5 px-4 text-xs font-semibold text-[#45464d]">
+                      <span className="bg-[#eff4ff] border px-2 py-0.5 rounded text-[10px]">
+                        {service.category}
+                      </span>
+                    </td>
+                    
+                    <td className="py-3.5 px-4 text-xs font-bold text-[#006f66] text-right">
+                      ₹{service.basePrice.toLocaleString()}
+                    </td>
+                    
+                    <td className="py-3.5 px-4 text-xs font-semibold text-[#7c839b] text-right">
+                      {service.taxRate.toFixed(1)}%
+                    </td>
 
-              {filteredServices.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center">
-                    <p className="text-secondary text-xs font-semibold">No services configured matching key queries.</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    <td className="py-3.5 px-4">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        service.status === 'Active' 
+                          ? 'bg-[#e6f4ea] text-[#1e8e3e]' 
+                          : 'bg-[#eff4ff] text-[#7c839b]'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${service.status === 'Active' ? 'bg-[#1e8e3e]' : 'bg-[#7c839b]'}`}></span>
+                        <span>{service.status}</span>
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleOpenEdit(service)}
+                          className="p-1 text-[#7c839b] hover:text-[#006a61] hover:bg-[#eff4ff] rounded transitions cursor-pointer"
+                          title="Edit Details"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Do you really want to delete service "${service.name}"?`)) {
+                              handleDeleteService(service.id);
+                            }
+                          }}
+                          className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/50 rounded transitions cursor-pointer"
+                          title="Remove Service"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filteredServices.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-12 text-center">
+                      <p className="text-secondary text-xs font-semibold">No services configured matching key queries.</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Dynamic Pagination Controls */}
         <div className="p-4 border-t bg-[#eff4ff]/20 flex justify-between items-center shrink-0">
@@ -413,8 +446,7 @@ export default function Services({
           <div className="flex items-center gap-1">
             <button className="px-2.5 py-1 text-[11px] font-semibold bg-white border rounded text-[#45464d]" disabled>Prev</button>
             <button className="w-6 h-6 text-xs font-bold p-1 rounded bg-[#006a61] text-white">1</button>
-            <button className="w-6 h-6 text-xs font-bold p-1 rounded bg-white border text-[#45464d]">2</button>
-            <button className="px-2.5 py-1 text-[11px] font-semibold bg-white border rounded text-[#45464d]">Next</button>
+            <button className="px-2.5 py-1 text-[11px] font-semibold bg-white border rounded text-[#45464d]" disabled>Next</button>
           </div>
         </div>
       </div>

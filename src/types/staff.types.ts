@@ -1,5 +1,5 @@
 export interface StaffMember {
-  id: string;
+  id: number;
   name: string;
   empCode: string;
   contact: string;
