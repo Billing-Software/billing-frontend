@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, Grid, Share2, Plus, Menu, LogOut, Building2 } from 'lucide-react';
+import { Search, Bell, Grid, Share2, Plus, Menu, Building2 } from 'lucide-react';
 import { User } from '../../types';
 
 interface HeaderProps {
@@ -120,37 +120,29 @@ export default function Header({
         <button 
           id="system-grid-btn"
           title="App Suite"
-          className="p-2 text-[#45464d] hover:bg-[#eff4ff] hover:text-[#0b1c30] rounded-full transition-all"
+          className="hidden md:inline-flex p-2 text-[#45464d] hover:bg-[#eff4ff] hover:text-[#0b1c30] rounded-full transition-all"
         >
           <Grid size={18} />
         </button>
-
+ 
         {/* Simple User Portrait popup preview trigger */}
         {user && (
-          <div className="flex items-center gap-2 border-l border-[#e2e8f0]/40 pl-3">
+          <div className="flex items-center gap-2 md:border-l md:border-[#e2e8f0]/40 md:pl-3">
             {user.avatarUrl && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
               <img 
                 referrerPolicy="no-referrer"
                 src={user.avatarUrl} 
                 alt={user.name || user.username} 
-                className="w-8 h-8 rounded-full border border-[#c6c6cd] object-cover hover:opacity-85 transition-opacity cursor-pointer text-xs"
+                className="hidden md:block w-8 h-8 rounded-full border border-[#c6c6cd] object-cover hover:opacity-85 transition-opacity cursor-pointer text-xs"
               />
             ) : (
               <div 
                 title={user.businessName || "Workspace"}
-                className="w-8 h-8 rounded-full border border-[#c6c6cd] bg-[#eff4ff] text-[#006a61] flex items-center justify-center hover:opacity-85 transition-opacity cursor-pointer shadow-sm"
+                className="hidden md:flex w-8 h-8 rounded-full border border-[#c6c6cd] bg-[#eff4ff] text-[#006a61] items-center justify-center hover:opacity-85 transition-opacity cursor-pointer shadow-sm"
               >
                 <Building2 size={16} />
               </div>
             )}
-            {/* Quick Mobile Logout indicator */}
-            <button
-              onClick={onLogout}
-              className="md:hidden p-1 bg-[#ffdad6]/40 text-[#ba1a1a] rounded hover:bg-[#ffdad6] transition-colors"
-              title="Logout"
-            >
-              <LogOut size={14} />
-            </button>
           </div>
         )}
       </div>
