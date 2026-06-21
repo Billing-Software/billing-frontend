@@ -115,10 +115,34 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
     return true;
   };
 
-  const handleNextStep = () => {
-    if (validateStep(step)) {
-      setStep((prev) => prev + 1);
+  const handleNextStep = async () => {
+    if (!validateStep(step)) return;
+
+    if (step === 1) {
+      setIsLoading(true);
+      setErrorText('');
+      try {
+        const usernameCheck = await apiClient.get<boolean>(`/auth/check-username?username=${encodeURIComponent(username.trim())}`);
+        if (usernameCheck.data === true) {
+          setErrorText('Username is already taken.');
+          setIsLoading(false);
+          return;
+        }
+        const emailCheck = await apiClient.get<boolean>(`/auth/check-email?email=${encodeURIComponent(email.trim())}`);
+        if (emailCheck.data === true) {
+          setErrorText('Email is already registered.');
+          setIsLoading(false);
+          return;
+        }
+      } catch (err: any) {
+        setErrorText('Failed to verify username/email availability.');
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(false);
     }
+
+    setStep((prev) => prev + 1);
   };
 
   const handlePrevStep = () => {
@@ -131,7 +155,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
     setErrorText('');
 
     if (!isLoginMode && step < 4) {
-      handleNextStep();
+      await handleNextStep();
       return;
     }
 
