@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Outlet } from 'react-router-dom';
 import { 
   X, 
-  Terminal, 
   LogOut, 
   Building2,
   LayoutDashboard,
@@ -12,11 +11,13 @@ import {
   Sparkles,
   Boxes,
   SquareUser,
-  Settings
+  Settings,
+  FileText
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { User } from '../types';
+import logoText from '../assets/BillCom-text.svg';
 
 interface MainLayoutProps {
   children?: React.ReactNode;
@@ -111,10 +112,7 @@ export default function MainLayout({
               <div>
                 <div className="flex justify-between items-center mb-6 border-b pb-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded bg-black text-[#86f2e4] flex items-center justify-center font-bold">
-                      <Terminal size={18} />
-                    </div>
-                    <span className="font-display text-lg font-extrabold text-[#0b1c30]">SmartBill Pro</span>
+                    <img src={logoText} alt="SmartBill Pro" className="h-6 object-contain" />
                   </div>
                   <button 
                     onClick={() => setIsMobileMenuOpen(false)}
@@ -139,11 +137,14 @@ export default function MainLayout({
                   {[
                     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                     { id: 'billing', label: 'Billing', icon: Receipt },
+                    { id: 'invoices', label: 'Invoices', icon: FileText },
                     { id: 'customers', label: 'Customers', icon: Users },
                     { id: 'services', label: 'Services', icon: Sparkles },
                     { id: 'inventory', label: 'Inventory', icon: Boxes },
-                    { id: 'staff', label: 'Staff', icon: SquareUser },
-                    { id: 'settings', label: 'Settings', icon: Settings },
+                    ...(currentUser?.role === 'Owner' ? [
+                      { id: 'staff', label: 'Staff', icon: SquareUser },
+                      { id: 'settings', label: 'Settings', icon: Settings },
+                    ] : [])
                   ].map(tab => {
                     const IconComponent = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -188,31 +189,11 @@ export default function MainLayout({
                   )}
                   <div>
                     <h5 className="text-xs font-bold text-[#0b1c30]">{currentUser.name || currentUser.username}</h5>
-                    <p className="text-[10px] text-[#7c839b] font-semibold">{currentUser.role}</p>
+                    <p className="text-[9px] text-[#45464d] font-semibold">{currentUser.role}</p>
+                    <p className="text-[9px] text-[#7c839b] font-semibold mt-0.5 truncate max-w-[160px]">{currentUser.businessName} (ID: {currentUser.businessId})</p>
                   </div>
                 </div>
 
-                {/* Switch branches helper */}
-                <div className="grid grid-cols-2 gap-2 mb-4 bg-[#eff4ff] p-1.5 rounded-lg border">
-                  <button 
-                    onClick={() => {
-                      setCurrentBranch('Main');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={`p-1 rounded text-[10px] font-bold ${currentBranch === 'Main' ? 'bg-white text-[#006f66] shadow' : 'text-[#45464d]'}`}
-                  >
-                    Main
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setCurrentBranch('Downtown');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={`p-1 rounded text-[10px] font-bold ${currentBranch === 'Downtown' ? 'bg-white text-[#006f66] shadow' : 'text-[#45464d]'}`}
-                  >
-                    Downtown
-                  </button>
-                </div>
 
                 <button 
                   onClick={onLogout}

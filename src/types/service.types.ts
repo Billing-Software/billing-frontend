@@ -6,5 +6,5 @@ export interface Service {
   basePrice: number;
   taxRate: number;
   status: 'Active' | 'Inactive';
-  iconName: string;
+  imageUrl: string;
 }

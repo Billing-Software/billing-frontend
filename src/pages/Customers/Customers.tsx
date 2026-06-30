@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, Trash2, Edit2, Mail, Phone, Loader2 } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, Mail, Phone, Loader2, FileText, History, X } from 'lucide-react';
 import { Customer } from '../../types';
 import { customerService } from '../../services/customer.service';
+import { billService } from '../../services/bill.service';
+import { useToast } from '../../hooks/useToast';
 
 export default function Customers() {
+  const { showToast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -16,13 +19,21 @@ export default function Customers() {
   const [phone, setPhone] = useState<string>('');
   const [email, setEmail] = useState<string>('');
 
+  // Ledger States
+  const [bills, setBills] = useState<any[]>([]);
+  const [selectedLedgerCustomer, setSelectedLedgerCustomer] = useState<Customer | null>(null);
+
   const fetchCustomers = async () => {
     try {
       setIsLoading(true);
-      const data = await customerService.getAll();
-      setCustomers(data);
+      const [customerData, billData] = await Promise.all([
+        customerService.getAll(),
+        billService.getAll()
+      ]);
+      setCustomers(customerData);
+      setBills(billData);
     } catch (e) {
-      console.error('Error fetching customers', e);
+      console.error('Error fetching customers and bills', e);
     } finally {
       setIsLoading(false);
     }
@@ -44,7 +55,7 @@ export default function Customers() {
           email: email || undefined,
           isWalkIn: false
         });
-        alert("Customer profile securely updated!");
+        showToast("Customer profile securely updated!", "success");
       } else {
         await customerService.create({
           name,
@@ -52,7 +63,7 @@ export default function Customers() {
           email: email || undefined,
           isWalkIn: false
         });
-        alert("New customer registration generated successfully.");
+        showToast("New customer registration generated successfully.", "success");
       }
       
       // Reset & Reload
@@ -63,7 +74,7 @@ export default function Customers() {
       setEmail('');
       fetchCustomers();
     } catch (err: any) {
-      alert("Error saving customer: " + (err.response?.data || err.message));
+      showToast("Error saving customer: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -78,10 +89,10 @@ export default function Customers() {
   const handleDeleteCustomer = async (id: number) => {
     try {
       await customerService.delete(id);
-      alert("Customer deleted successfully.");
+      showToast("Customer deleted successfully.", "success");
       fetchCustomers();
     } catch (err: any) {
-      alert("Error deleting customer: " + (err.response?.data || err.message));
+      showToast("Error deleting customer: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -269,6 +280,13 @@ export default function Customers() {
 
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setSelectedLedgerCustomer(cust)}
+                        className="p-1 text-[#7c839b] hover:text-[#006a61] hover:bg-[#eff4ff] rounded transition-colors cursor-pointer"
+                        title="View Ledger & History"
+                      >
+                        <History size={13} />
+                      </button>
                       {!cust.isWalkIn && (
                         <>
                           <button
@@ -308,6 +326,99 @@ export default function Customers() {
           </div>
         )}
       </div>
+
+      {/* Ledger Side Drawer Panel */}
+      <AnimatePresence>
+        {selectedLedgerCustomer && (() => {
+          const customerBills = bills.filter(b => b.customerId === selectedLedgerCustomer.id);
+          const outstandingDues = customerBills
+            .filter(b => b.status.toLowerCase() !== 'paid')
+            .reduce((sum, b) => sum + b.totalAmount, 0);
+
+          return (
+            <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'tween', duration: 0.3 }}
+                className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col p-6 overflow-hidden"
+              >
+                {/* Header */}
+                <div className="flex justify-between items-center pb-4 border-b border-[#e2e8f0]">
+                  <div>
+                    <h3 className="font-display font-black text-lg text-[#0b1c30]">Customer Ledger</h3>
+                    <p className="text-xs text-[#7c839b] font-medium mt-0.5">Account history for {selectedLedgerCustomer.name}</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedLedgerCustomer(null)}
+                    className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#eff4ff] rounded-lg transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Info & Balance HUD */}
+                <div className="my-5 grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-[#f8f9ff] border border-[#e2e8f0]/60 rounded-xl">
+                    <p className="text-[10px] font-bold text-[#7c839b] uppercase tracking-wider">Contact Info</p>
+                    <p className="text-xs font-bold text-[#0b1c30] mt-1.5">{selectedLedgerCustomer.phone || 'N/A'}</p>
+                    <p className="text-[10px] font-semibold text-[#45464d] truncate mt-0.5">{selectedLedgerCustomer.email || 'No email registered'}</p>
+                  </div>
+
+                  <div className={`p-4 border rounded-xl flex flex-col justify-between ${
+                    outstandingDues > 0 
+                      ? 'bg-[#ffdad6]/40 border-[#ffdad6] text-[#ba1a1a]' 
+                      : 'bg-[#e2f3eb]/40 border-[#e2f3eb] text-[#1e8e3e]'
+                  }`}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider">Outstanding Dues</p>
+                    <p className="text-xl font-bold font-display mt-1 leading-none">
+                      ₹{outstandingDues.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* History Section */}
+                <h4 className="font-display text-xs font-bold text-[#0b1c30] uppercase tracking-wider mb-2.5">Invoices &amp; Payments History</h4>
+                
+                <div className="flex-1 overflow-y-auto pr-1">
+                  <div className="space-y-3">
+                    {customerBills.map(bill => (
+                      <div 
+                        key={bill.id}
+                        className="p-3.5 bg-white border border-[#e2e8f0] rounded-xl hover:border-[#006a61]/35 transition-all flex justify-between items-center"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-[#0b1c30]">{bill.billNumber}</span>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              bill.status.toLowerCase() === 'paid' 
+                                ? 'bg-[#e2f3eb] text-[#1e8e3e]' 
+                                : 'bg-[#ffdad6] text-[#ba1a1a]'
+                            }`}>
+                              {bill.status}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#7c839b] font-medium mt-1">
+                            Date: {new Date(bill.createdAt).toLocaleDateString()} &bull; Mode: {bill.paymentMethod}
+                          </p>
+                        </div>
+                        <span className="font-display text-xs font-extrabold text-[#0b1c30]">
+                          ₹{bill.totalAmount.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+
+                    {customerBills.length === 0 && (
+                      <p className="text-xs text-[#7c839b] text-center py-12 font-semibold">No invoices recorded for this customer yet.</p>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
     </motion.div>
   );
 }

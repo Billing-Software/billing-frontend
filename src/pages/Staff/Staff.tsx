@@ -3,8 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, Plus, Trash2, Edit2, Award, Loader2 } from 'lucide-react';
 import { StaffMember } from '../../types';
 import { staffService } from '../../services/staff.service';
+import { billService } from '../../services/bill.service';
+import { useToast } from '../../hooks/useToast';
 
 export default function Staff() {
+  const { showToast } = useToast();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -18,6 +21,28 @@ export default function Staff() {
   const [contact, setContact] = useState<string>('');
   const [role, setRole] = useState<'Manager' | 'Staff' | 'Cashier'>('Staff');
   const [status, setStatus] = useState<'Active' | 'Inactive'>('Active');
+  const [password, setPassword] = useState<string>('');
+
+  const [expandedStaffId, setExpandedStaffId] = useState<number | null>(null);
+  const [allBills, setAllBills] = useState<any[]>([]);
+  const [isFetchingBills, setIsFetchingBills] = useState<boolean>(false);
+
+  const handleToggleExpand = async (staffId: number) => {
+    if (expandedStaffId === staffId) {
+      setExpandedStaffId(null);
+    } else {
+      setExpandedStaffId(staffId);
+      try {
+        setIsFetchingBills(true);
+        const data = await billService.getAll();
+        setAllBills(data);
+      } catch (e) {
+        console.error('Error fetching bills for audit', e);
+      } finally {
+        setIsFetchingBills(false);
+      }
+    }
+  };
 
   const fetchStaff = async () => {
     try {
@@ -58,18 +83,24 @@ export default function Staff() {
           empCode: empCode.toUpperCase(),
           contact,
           role,
-          status
+          status,
+          password: password.trim() !== '' ? password : null
         });
-        alert("Staff access credentials updated!");
+        showToast("Staff access credentials updated!", "success");
       } else {
+        if (!password) {
+          showToast("Password is required for new registrations.", "error");
+          return;
+        }
         await staffService.create({
           name,
           empCode: empCode.toUpperCase(),
           contact,
           role,
-          status
+          status,
+          password
         });
-        alert("Staff profile registered successfully!");
+        showToast("Staff profile registered successfully!", "success");
       }
 
       setIsFormOpen(false);
@@ -79,9 +110,10 @@ export default function Staff() {
       setContact('');
       setRole('Staff');
       setStatus('Active');
+      setPassword('');
       fetchStaff();
     } catch (err: any) {
-      alert("Error saving staff member: " + (err.response?.data || err.message));
+      showToast("Error saving staff member: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -92,16 +124,17 @@ export default function Staff() {
     setContact(member.contact);
     setRole(member.role);
     setStatus(member.status);
+    setPassword('');
     setIsFormOpen(true);
   };
 
   const handleDeleteStaff = async (id: number) => {
     try {
       await staffService.delete(id);
-      alert("Staff access revoked successfully.");
+      showToast("Staff access revoked successfully.", "success");
       fetchStaff();
     } catch (err: any) {
-      alert("Error deleting staff member: " + (err.response?.data || err.message));
+      showToast("Error deleting staff member: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -131,6 +164,7 @@ export default function Staff() {
             setContact('');
             setRole('Staff');
             setStatus('Active');
+            setPassword('');
             setIsFormOpen(true);
           }}
           className="bg-[#006a61] text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:bg-opacity-95 cursor-pointer"
@@ -179,14 +213,28 @@ export default function Staff() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Work Contact</label>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Login Email / Contact</label>
                 <input 
-                  type="text" 
+                  type="email" 
                   value={contact} 
                   onChange={(e) => setContact(e.target.value)}
-                  placeholder="e.g. name@smartbill.com or phone" 
+                  placeholder="e.g. staff@smartbill.com" 
                   className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase">
+                  {editingStaff ? 'Login Password (optional)' : 'Login Password'}
+                </label>
+                <input 
+                  type="password" 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={editingStaff ? '•••••••• (unchanged)' : 'Minimum 6 characters'} 
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
+                  required={!editingStaff}
                 />
               </div>
 
@@ -214,6 +262,8 @@ export default function Staff() {
                   <option value="Inactive">Suspended / Inactive</option>
                 </select>
               </div>
+
+
 
               <div className="col-span-full flex gap-2 justify-end">
                 <button
@@ -288,6 +338,7 @@ export default function Staff() {
                 <p className="font-mono text-[10px] text-[#7c839b] font-semibold uppercase mt-0.5">{member.empCode}</p>
                 <p className="font-sans text-xs text-[#45464d] truncate mt-1">{member.contact}</p>
 
+
                 {/* Mini analytics dividers */}
                 <div className="grid grid-cols-2 gap-2 border-t border-[#e2e8f0]/65 mt-4 pt-4">
                   <div>
@@ -305,6 +356,48 @@ export default function Staff() {
                     </p>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleExpand(member.id)}
+                  className="mt-3 w-full text-center text-[10px] font-bold uppercase tracking-wider text-[#006f66] hover:text-[#0b1c30] transition-colors py-1 bg-[#eff4ff]/30 hover:bg-[#eff4ff]/60 border rounded border-[#e2e8f0]/40 cursor-pointer"
+                >
+                  {expandedStaffId === member.id ? 'Hide Audit Log' : 'View Audit Log'}
+                </button>
+
+                <AnimatePresence>
+                  {expandedStaffId === member.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden mt-3 border-t border-[#e2e8f0]/40 pt-3 space-y-2"
+                    >
+                      <h4 className="text-[9px] font-bold text-[#7c839b] uppercase tracking-wider">Processed Invoices</h4>
+                      {isFetchingBills ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="animate-spin text-[#006f66]" size={14} />
+                        </div>
+                      ) : (
+                        <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
+                          {allBills.filter(b => b.createdByStaffId === member.id).length > 0 ? (
+                            allBills.filter(b => b.createdByStaffId === member.id).map(bill => (
+                              <div key={bill.id} className="flex justify-between items-center text-[10px] p-1.5 bg-[#f8f9ff] border border-[#e2e8f0]/40 rounded hover:border-[#006f66]/30">
+                                <div>
+                                  <p className="font-bold text-[#006f66]">{bill.billNumber}</p>
+                                  <p className="text-[#7c839b] font-medium">{bill.customerName || 'Walk-In Customer'}</p>
+                                </div>
+                                <p className="font-bold text-[#0b1c30]">₹{bill.totalAmount.toLocaleString()}</p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-[10px] text-[#7c839b] font-semibold text-center py-2">No invoices created yet.</p>
+                          )}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Action Row */}

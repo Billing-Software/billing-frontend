@@ -3,8 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, Plus, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { InventoryItem } from '../../types';
 import { inventoryService } from '../../services/inventory.service';
+import { categoryService, Category } from '../../services/category.service';
+import { useToast } from '../../hooks/useToast';
 
 export default function Inventory() {
+  const { showToast } = useToast();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -22,6 +25,7 @@ export default function Inventory() {
   const [currentStock, setCurrentStock] = useState<number>(10);
   const [unit, setUnit] = useState<string>('Units');
   const [reorderLevel, setReorderLevel] = useState<number>(5);
+  const [dbCategories, setDbCategories] = useState<Category[]>([]);
 
   const fetchInventory = async () => {
     try {
@@ -35,11 +39,28 @@ export default function Inventory() {
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const list = await categoryService.getAll();
+      const invCats = list.filter(c => c.type === 'Inventory');
+      setDbCategories(invCats);
+      if (invCats.length > 0 && !editingItem) {
+        setCategory(invCats[0].name);
+      }
+    } catch (e) {
+      console.error('Error loading inventory categories', e);
+    }
+  };
+
   useEffect(() => {
     fetchInventory();
+    fetchCategories();
   }, []);
 
-  const categories = Array.from(new Set(inventory.map(i => i.category)));
+  const categories = Array.from(new Set([
+    ...dbCategories.map(c => c.name),
+    ...inventory.map(i => i.category)
+  ]));
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +77,7 @@ export default function Inventory() {
           reorderLevel,
           imageUrl: editingItem.imageUrl
         });
-        alert("Stock database item updated!");
+        showToast("Stock database item updated!", "success");
       } else {
         await inventoryService.create({
           name,
@@ -66,7 +87,7 @@ export default function Inventory() {
           unit,
           reorderLevel
         });
-        alert("New inventory SKU added successfully!");
+        showToast("New inventory SKU added successfully!", "success");
       }
 
       setIsFormOpen(false);
@@ -79,7 +100,7 @@ export default function Inventory() {
       setReorderLevel(5);
       fetchInventory();
     } catch (err: any) {
-      alert("Error saving item: " + (err.response?.data || err.message));
+      showToast("Error saving item: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -97,10 +118,10 @@ export default function Inventory() {
   const handleDeleteItem = async (id: number) => {
     try {
       await inventoryService.delete(id);
-      alert("Inventory record deleted successfully.");
+      showToast("Inventory record deleted successfully.", "success");
       fetchInventory();
     } catch (err: any) {
-      alert("Error deleting item: " + (err.response?.data || err.message));
+      showToast("Error deleting item: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -193,10 +214,16 @@ export default function Inventory() {
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
                 >
-                  <option value="Consumables">Consumables</option>
-                  <option value="Repair Parts">Repair Parts</option>
-                  <option value="Retail Products">Retail Products</option>
-                  <option value="Tools">Tools</option>
+                  {dbCategories.length > 0 ? (
+                    dbCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+                  ) : (
+                    <>
+                      <option value="Consumables">Consumables</option>
+                      <option value="Repair Parts">Repair Parts</option>
+                      <option value="Retail Products">Retail Products</option>
+                      <option value="Tools">Tools</option>
+                    </>
+                  )}
                 </select>
               </div>
 

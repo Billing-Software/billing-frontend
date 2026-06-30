@@ -9,11 +9,13 @@ import {
   Settings, 
   HelpCircle,
   Plus,
-  Terminal,
   LogOut,
-  Building2
+  Building2,
+  Wallet,
+  FileText
 } from 'lucide-react';
 import { User } from '../../types';
+import logoText from '../../assets/BillCom-text.svg';
 
 interface SidebarProps {
   currentTab: string;
@@ -27,25 +29,24 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'billing', label: 'Billing', icon: Receipt },
+    { id: 'invoices', label: 'Invoices', icon: FileText },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'services', label: 'Services', icon: Sparkles },
     { id: 'inventory', label: 'Inventory', icon: Boxes },
-    { id: 'staff', label: 'Staff', icon: SquareUser },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    ...(user?.role === 'Owner' ? [
+      { id: 'staff', label: 'Staff', icon: SquareUser },
+      { id: 'settings', label: 'Settings', icon: Settings },
+      { id: 'expenses', label: 'Expenses', icon: Wallet },
+    ] : [])
   ];
 
   return (
     <aside id="sidebar-panel" className="hidden md:flex flex-col h-screen py-6 px-4 bg-white border-r border-[#e2e8f0] w-[240px] shrink-0 z-30 justify-between">
       <div>
         {/* Branding */}
-        <div className="mb-6 px-2 flex items-center gap-3">
-          <div className="w-10 h-10 rounded bg-[#000000] text-white flex items-center justify-center font-bold shadow-sm">
-            <Terminal size={22} className="text-[#86f2e4]" />
-          </div>
-          <div>
-            <h1 className="font-display text-lg font-bold text-[#0b1c30] tracking-tight leading-tight">SmartBill Pro</h1>
-            <p className="font-sans text-xs text-[#7c839b] font-medium leading-none mt-0.5">Admin Terminal</p>
-          </div>
+        <div className="mb-6 px-2 flex flex-col items-start gap-1">
+          <img src={logoText} alt="SmartBill Pro" className="h-8 object-contain" />
+          <p className="font-sans text-[9px] text-[#7c839b] font-semibold uppercase tracking-wider pl-1">Admin Terminal</p>
         </div>
 
         {/* Quick Action Button */}
@@ -116,7 +117,10 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
             )}
             <div className="flex-1 min-w-0">
               <p className="font-sans text-xs font-semibold text-[#0b1c30] truncate">{user.name || user.username}</p>
-              <p className="font-sans text-[10px] text-[#45464d] leading-none truncate">{user.role}</p>
+              <p className="font-sans text-[9px] text-[#45464d] leading-none truncate">{user.role}</p>
+              <p className="font-sans text-[9px] text-[#7c839b] leading-normal truncate mt-0.5" title={user.businessName}>
+                {user.businessName} (ID: {user.businessId})
+              </p>
             </div>
             <button 
               id="logout-btn"

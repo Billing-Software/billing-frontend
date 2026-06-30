@@ -12,6 +12,8 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { dashboardService } from '../../services/dashboard.service';
+import { useToast } from '../../hooks/useToast';
+import { useAuth } from '../../hooks/useAuth';
 
 interface DashboardProps {
   onNavigateToBilling: () => void;
@@ -26,6 +28,8 @@ export default function Dashboard({
   onNavigateToServices,
   currentBranch 
 }: DashboardProps) {
+  const { currentUser } = useAuth();
+  const { showToast } = useToast();
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedRep, setSelectedRep] = useState<string>('7days');
@@ -102,17 +106,25 @@ export default function Dashboard({
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-3xl font-black text-[#0b1c30]">Today's Overview</h2>
-          <p className="font-sans text-sm text-[#45464d] mt-1 font-medium">Live metrics for {currentBranch} Branch</p>
+          <h2 className="font-display text-3xl font-black text-[#0b1c30]">
+            {currentUser?.role === 'Owner' ? "Today's Overview" : 'My Dashboard'}
+          </h2>
+          <p className="font-sans text-sm text-[#45464d] mt-1 font-medium">
+            {currentUser?.role === 'Owner' 
+              ? `Live metrics for ${currentBranch} Branch` 
+              : `Logged in as ${currentUser?.role} - Shift Performance`}
+          </p>
         </div>
         <div className="flex gap-2">
-          <button 
-            id="reports-btn"
-            onClick={() => alert(`Generating PDF Reports for ${currentBranch} Branch...`)}
-            className="bg-white border border-[#c6c6cd] text-[#0b1c30] font-sans text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#eff4ff] shadow-sm transition-all cursor-pointer"
-          >
-            View Reports
-          </button>
+          {currentUser?.role === 'Owner' && (
+            <button 
+              id="reports-btn"
+              onClick={() => showToast(`Generating PDF Reports for ${currentBranch} Branch...`, "info")}
+              className="bg-white border border-[#c6c6cd] text-[#0b1c30] font-sans text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#eff4ff] shadow-sm transition-all cursor-pointer"
+            >
+              View Reports
+            </button>
+          )}
           <button 
             id="billing-shortcuts"
             onClick={onNavigateToBilling}
@@ -132,7 +144,9 @@ export default function Dashboard({
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[#006a61]"></div>
-            <span className="font-sans text-xs text-[#45464d] font-semibold tracking-wider uppercase">Today's Revenue</span>
+            <span className="font-sans text-xs text-[#45464d] font-semibold tracking-wider uppercase">
+              {currentUser?.role === 'Owner' ? "Today's Revenue" : 'My Revenue Contrib.'}
+            </span>
           </div>
           <div className="mt-4">
             <span className="font-display text-3xl font-black text-[#0b1c30]">₹{summary.totalRevenue.toLocaleString()}</span>
@@ -150,7 +164,9 @@ export default function Dashboard({
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[#86f2e4]"></div>
-            <span className="font-sans text-xs text-[#45464d] font-semibold tracking-wider uppercase">Bills Generated</span>
+            <span className="font-sans text-xs text-[#45464d] font-semibold tracking-wider uppercase">
+              {currentUser?.role === 'Owner' ? 'Bills Generated' : 'My Invoices Compiled'}
+            </span>
           </div>
           <div className="mt-4">
             <span className="font-display text-3xl font-black text-[#0b1c30]">{summary.totalBills}</span>
@@ -165,7 +181,9 @@ export default function Dashboard({
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[#131b2e]"></div>
-            <span className="font-sans text-xs text-[#45464d] font-semibold tracking-wider uppercase">Registered Customers</span>
+            <span className="font-sans text-xs text-[#45464d] font-semibold tracking-wider uppercase">
+              {currentUser?.role === 'Owner' ? 'Registered Customers' : 'Customers I Served'}
+            </span>
           </div>
           <div className="mt-4">
             <span className="font-display text-3xl font-black text-[#0b1c30]">{summary.totalCustomers}</span>
@@ -173,18 +191,34 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Pending Payments */}
-        <div className="bg-white border border-[#ba1a1a]/20 bg-[#ffdad6]/10 rounded-xl p-5 shadow-sm relative overflow-hidden group hover:shadow-ambient-md transition-all">
+        {/* Pending Payments / Shift Status */}
+        <div className={`bg-white border rounded-xl p-5 shadow-sm relative overflow-hidden group hover:shadow-ambient-md transition-all ${
+          currentUser?.role === 'Owner' ? 'border-[#ba1a1a]/20 bg-[#ffdad6]/10' : 'border-[#006a61]/20 bg-[#e6f4ea]/10'
+        }`}>
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-100 transition-opacity">
-            <AlertCircle size={44} className="text-[#ba1a1a]" />
+            {currentUser?.role === 'Owner' ? (
+              <AlertCircle size={44} className="text-[#ba1a1a]" />
+            ) : (
+              <Sparkles size={44} className="text-[#006a61]" />
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[#ba1a1a]"></div>
-            <span className="font-sans text-xs text-[#ba1a1a] font-semibold tracking-wider uppercase">Low Stock Alerts</span>
+            <div className={`w-2 h-2 rounded-full ${currentUser?.role === 'Owner' ? 'bg-[#ba1a1a]' : 'bg-[#006a61]'}`}></div>
+            <span className={`font-sans text-xs font-semibold tracking-wider uppercase ${
+              currentUser?.role === 'Owner' ? 'text-[#ba1a1a]' : 'text-[#006a61]'
+            }`}>
+              {currentUser?.role === 'Owner' ? 'Low Stock Alerts' : 'Shift Status'}
+            </span>
           </div>
           <div className="mt-4">
-            <span className="font-display text-3xl font-black text-[#ba1a1a]">{summary.lowStockCount}</span>
-            <p className="font-sans text-xs text-[#45464d] mt-1 font-medium">SKUs below safety limit</p>
+            <span className={`font-display text-3xl font-black ${
+              currentUser?.role === 'Owner' ? 'text-[#ba1a1a]' : 'text-[#006a61]'
+            }`}>
+              {currentUser?.role === 'Owner' ? summary.lowStockCount : 'Active'}
+            </span>
+            <p className="font-sans text-xs text-[#45464d] mt-1 font-medium">
+              {currentUser?.role === 'Owner' ? 'SKUs below safety limit' : `Logged in as ${currentUser?.role}`}
+            </p>
           </div>
         </div>
       </div>
@@ -267,12 +301,16 @@ export default function Dashboard({
       </div>
 
       {/* Row 3: Recent Activity Transaction Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white border border-[#e2e8f0]/80 rounded-xl shadow-sm p-6 lg:col-span-2">
+      <div className={`grid grid-cols-1 ${currentUser?.role === 'Owner' ? 'lg:grid-cols-3' : ''} gap-6`}>
+        <div className={`bg-white border border-[#e2e8f0]/80 rounded-xl shadow-sm p-6 ${currentUser?.role === 'Owner' ? 'lg:col-span-2' : 'col-span-full'}`}>
           <div className="flex justify-between items-center mb-4 pb-2 border-b border-[#e2e8f0]/40">
             <div>
-              <h3 className="font-display text-lg font-bold text-[#0b1c30]">Recent Activity Logs</h3>
-              <p className="font-sans text-xs text-[#7c839b] font-medium">Real-time point-of-sale audits</p>
+              <h3 className="font-display text-lg font-bold text-[#0b1c30]">
+                {currentUser?.role === 'Owner' ? 'Recent Activity Logs' : 'My Recent Invoices'}
+              </h3>
+              <p className="font-sans text-xs text-[#7c839b] font-medium">
+                {currentUser?.role === 'Owner' ? 'Real-time point-of-sale audits' : 'List of invoices processed in this shift'}
+              </p>
             </div>
             <button 
               id="view-all-bills-dashboard"
@@ -289,6 +327,9 @@ export default function Dashboard({
                 <tr>
                   <th className="py-2.5 px-3 font-sans text-xs font-bold text-[#7c839b] uppercase tracking-wider border-b border-[#e2e8f0]/30">Bill Number</th>
                   <th className="py-2.5 px-3 font-sans text-xs font-bold text-[#7c839b] uppercase tracking-wider border-b border-[#e2e8f0]/30">Customer</th>
+                  {currentUser?.role === 'Owner' && (
+                    <th className="py-2.5 px-3 font-sans text-xs font-bold text-[#7c839b] uppercase tracking-wider border-b border-[#e2e8f0]/30">Billed By</th>
+                  )}
                   <th className="py-2.5 px-3 font-sans text-xs font-bold text-[#7c839b] uppercase tracking-wider border-b border-[#e2e8f0]/30">Timestamp</th>
                   <th className="py-2.5 px-3 font-sans text-xs font-bold text-[#7c839b] uppercase tracking-wider border-b border-[#e2e8f0]/30">Status</th>
                   <th className="py-2.5 px-3 font-sans text-xs font-bold text-[#7c839b] uppercase tracking-wider border-b border-[#e2e8f0]/30 text-right">Amount</th>
@@ -303,6 +344,9 @@ export default function Dashboard({
                     >
                       <td className="py-3 px-3 font-sans text-xs font-bold text-[#006f66]">{bill.billNumber}</td>
                       <td className="py-3 px-3 font-sans text-xs font-semibold text-[#0b1c30]">{bill.customerName}</td>
+                      {currentUser?.role === 'Owner' && (
+                        <td className="py-3 px-3 font-sans text-xs font-semibold text-[#45464d]">{bill.staffName || 'Owner'}</td>
+                      )}
                       <td className="py-3 px-3 font-sans text-xs text-[#45464d]">{new Date(bill.createdAt).toLocaleTimeString()}</td>
                       <td className="py-3 px-3">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -320,7 +364,7 @@ export default function Dashboard({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-xs text-[#7c839b] font-semibold">No recent invoices recorded.</td>
+                    <td colSpan={currentUser?.role === 'Owner' ? 6 : 5} className="py-8 text-center text-xs text-[#7c839b] font-semibold">No recent invoices recorded.</td>
                   </tr>
                 )}
               </tbody>
@@ -329,16 +373,17 @@ export default function Dashboard({
         </div>
 
         {/* Low Stock Alerts */}
-        <div className="bg-white border border-[#e2e8f0]/80 rounded-xl shadow-sm p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center mb-4 pb-2 border-b border-[#e2e8f0]/40">
-              <div>
-                <h3 className="font-display text-lg font-bold text-[#0b1c30]">Stock Safeguards</h3>
-                <p className="font-sans text-xs text-[#7c839b] font-medium">Critical reorder status</p>
+        {currentUser?.role === 'Owner' && (
+          <div className="bg-white border border-[#e2e8f0]/80 rounded-xl shadow-sm p-6 flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-center mb-4 pb-2 border-b border-[#e2e8f0]/40">
+                <div>
+                  <h3 className="font-display text-lg font-bold text-[#0b1c30]">Stock Safeguards</h3>
+                  <p className="font-sans text-xs text-[#7c839b] font-medium">Critical reorder status</p>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-3 overflow-y-auto max-h-[220px]">
+              <div className="space-y-3 overflow-y-auto max-h-[220px]">
               {lowStockItems && lowStockItems.length > 0 ? (
                 lowStockItems.map((item: any) => (
                   <div key={item.id} className="flex items-center justify-between p-2.5 bg-[#ffdad6]/10 border border-[#ba1a1a]/10 rounded-xl">
@@ -364,7 +409,8 @@ export default function Dashboard({
             </div>
           </div>
         </div>
-      </div>
-    </motion.div>
+      )}
+    </div>
+  </motion.div>
   );
 }

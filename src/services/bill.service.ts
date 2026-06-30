@@ -1,8 +1,17 @@
 import { apiClient } from './api.client';
 
 export const billService = {
-  getAll: async () => {
-    const response = await apiClient.get('/bills');
+  getAll: async (filters?: {
+    customerId?: number;
+    staffId?: number;
+    branchId?: number;
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+    minAmount?: number;
+    maxAmount?: number;
+  }) => {
+    const response = await apiClient.get('/bills', { params: filters });
     return response.data;
   },
   getById: async (id: number) => {

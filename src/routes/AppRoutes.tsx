@@ -11,8 +11,11 @@ import Customers from '../pages/Customers/Customers';
 import Inventory from '../pages/Inventory/Inventory';
 import Staff from '../pages/Staff/Staff';
 import Settings from '../pages/Settings/Settings';
+import Expenses from '../pages/Expenses/Expenses';
 import Login from '../pages/Login/Login';
+import Invoices from '../pages/Invoices/Invoices';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 
 interface AppRoutesProps {
   searchText: string;
@@ -67,6 +70,7 @@ export default function AppRoutes({
   handleLogout
 }: AppRoutesProps) {
   const { currentUser, currentBranch, setCurrentBranch } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -81,9 +85,9 @@ export default function AppRoutes({
     const shareMessage = `SmartBill Pro Gateway for ${currentBranch} Branch is online: All cash registers are fully operational. Current revenue levels are green.`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(shareMessage);
-      alert("Access webhook message copied to workspace clipboard!");
+      showToast("Access webhook message copied to workspace clipboard!", "success");
     } else {
-      alert(shareMessage);
+      showToast(shareMessage, "info");
     }
   };
 
@@ -126,8 +130,10 @@ export default function AppRoutes({
         <Route path="services" element={<Services />} />
         <Route path="customers" element={<Customers />} />
         <Route path="inventory" element={<Inventory />} />
-        <Route path="staff" element={<Staff />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="invoices" element={<Invoices />} />
+        <Route path="staff" element={currentUser?.role === 'Owner' ? <Staff /> : <Navigate to="/dashboard" replace />} />
+        <Route path="settings" element={currentUser?.role === 'Owner' ? <Settings /> : <Navigate to="/dashboard" replace />} />
+        <Route path="expenses" element={currentUser?.role === 'Owner' ? <Expenses /> : <Navigate to="/dashboard" replace />} />
         <Route path="help" element={<Help />} />
         
         {/* Redirect from root or invalid paths */}

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
-  Terminal, 
   Lock, 
   Mail, 
   ArrowRight, 
@@ -21,6 +20,7 @@ import {
 import { User } from '../../../types';
 import { authService } from '../../../services/auth.service';
 import { apiClient } from '../../../services/api.client';
+import logo from '../../../assets/BillCom-full.svg';
 
 interface AuthViewProps {
   onLoginSuccess: (user: User) => void;
@@ -32,8 +32,18 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
   const isLoginMode = location.pathname !== '/register';
   
   // Login / Common credentials
-  const [username, setUsername] = useState<string>('');
+  const [loginEmail, setLoginEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
+
+  // Password Reset states
+  const [authMode, setAuthMode] = useState<'login' | 'forgot' | 'reset'>('login');
+  const [resetCode, setResetCode] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
+  
+  // Staff login states
+  const [isStaff, setIsStaff] = useState<boolean>(false);
+  const [businessIdInput, setBusinessIdInput] = useState<string>('');
   
   // Register step 1: Account setup
   const [email, setEmail] = useState<string>('');
@@ -154,6 +164,40 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
     e.preventDefault();
     setErrorText('');
 
+    if (authMode === 'forgot') {
+      setIsLoading(true);
+      try {
+        const res = await authService.forgotPassword(loginEmail);
+        alert(`Verification reset code sent to email! (For testing, the code is: ${res.code})`);
+        setAuthMode('reset');
+      } catch (err: any) {
+        setErrorText(err.response?.data || err.message || 'Failed to request reset code.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (authMode === 'reset') {
+      setIsLoading(true);
+      try {
+        await authService.resetPassword({
+          email: loginEmail,
+          token: resetCode,
+          newPassword
+        });
+        alert('Password has been reset successfully! You can now log in.');
+        setAuthMode('login');
+        setResetCode('');
+        setNewPassword('');
+      } catch (err: any) {
+        setErrorText(err.response?.data || err.message || 'Failed to reset password.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     if (!isLoginMode && step < 4) {
       await handleNextStep();
       return;
@@ -167,7 +211,8 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
 
     try {
       if (isLoginMode) {
-        const user = await authService.login(username, password);
+        const bId = isStaff && businessIdInput ? parseInt(businessIdInput) : undefined;
+        const user = await authService.login(loginEmail, password, bId);
         onLoginSuccess(user);
         navigate('/dashboard', { replace: true });
       } else {
@@ -212,11 +257,8 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
     <div id="auth-terminal-root" className="w-full max-w-lg mx-auto">
       {/* Main Branding Logo */}
       <div className="text-center mb-6">
-        <div className="inline-flex w-12 h-12 rounded-xl bg-[#0b1c30] text-white items-center justify-center font-bold shadow-md shadow-black/10 mb-3">
-          <Terminal size={24} className="text-[#86f2e4]" />
-        </div>
-        <h1 className="font-display text-2xl font-black text-[#0b1c30] tracking-tight">SmartBill Pro</h1>
-        <p className="font-sans text-xs text-[#7c839b] font-semibold uppercase tracking-wider mt-1">Multi-Tenant Billing Solution</p>
+        <img src={logo} alt="SmartBill Pro" className="w-56 mx-auto mb-2 object-contain" />
+        <p className="font-sans text-[10px] text-[#7c839b] font-semibold uppercase tracking-wider">Multi-Tenant Billing Solution</p>
       </div>
 
       {/* Form panel Card */}
@@ -226,16 +268,16 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
         <div className="flex border-b border-[#e2e8f0] mb-6">
           <button
             type="button"
-            onClick={() => { navigate('/login'); setStep(1); setErrorText(''); }}
+            onClick={() => { navigate('/login'); setStep(1); setErrorText(''); setAuthMode('login'); }}
             className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
               isLoginMode ? 'border-[#006a61] text-[#006a61]' : 'border-transparent text-[#7c839b] hover:text-[#0b1c30]'
             }`}
           >
-            Owner Login
+            Workspace Login
           </button>
           <button
             type="button"
-            onClick={() => { navigate('/register'); setStep(1); setErrorText(''); }}
+            onClick={() => { navigate('/register'); setStep(1); setErrorText(''); setAuthMode('login'); }}
             className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
               !isLoginMode ? 'border-[#006a61] text-[#006a61]' : 'border-transparent text-[#7c839b] hover:text-[#0b1c30]'
             }`}
@@ -310,7 +352,91 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <AnimatePresence mode="wait">
-            {isLoginMode ? (
+            {authMode === 'forgot' ? (
+              /* FORGOT PASSWORD FIELDS */
+              <motion.div
+                key="forgot"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border-b border-[#f1f5f9] pb-2 mb-1">
+                  <h3 className="text-xs font-bold text-[#0b1c30] uppercase tracking-wide">Request Password Reset</h3>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Email Address</label>
+                  <div className="relative">
+                    <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
+                    <input 
+                      type="email" 
+                      placeholder="john@example.com"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            ) : authMode === 'reset' ? (
+              /* RESET PASSWORD FIELDS */
+              <motion.div
+                key="reset"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border-b border-[#f1f5f9] pb-2 mb-1">
+                  <h3 className="text-xs font-bold text-[#0b1c30] uppercase tracking-wide">Enter Reset Code &amp; New Password</h3>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Email Address</label>
+                  <div className="relative">
+                    <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
+                    <input 
+                      type="email" 
+                      placeholder="john@example.com"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">6-Digit Code</label>
+                  <div className="relative">
+                    <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
+                    <input 
+                      type="text" 
+                      placeholder="Enter 6-digit code"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value)}
+                      className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">New Password</label>
+                  <div className="relative">
+                    <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
+                    <input 
+                      type="password" 
+                      placeholder="Min 6 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            ) : isLoginMode ? (
               /* LOGIN FIELDS */
               <motion.div
                 key="login"
@@ -320,21 +446,63 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
                 transition={{ duration: 0.2 }}
                 className="space-y-4"
               >
+                {/* Segmented Controller to Differentiate Login Type */}
+                <div className="flex bg-[#eff4ff] p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => { setIsStaff(false); setErrorText(''); }}
+                    className={`flex-1 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${!isStaff ? 'bg-[#006a61] text-white shadow-sm' : 'text-[#45464d] hover:text-[#0b1c30]'}`}
+                  >
+                    Owner Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsStaff(true); setErrorText(''); }}
+                    className={`flex-1 py-1.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${isStaff ? 'bg-[#006a61] text-white shadow-sm' : 'text-[#45464d] hover:text-[#0b1c30]'}`}
+                  >
+                    Staff Account
+                  </button>
+                </div>
+ 
+                {isStaff && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="space-y-1"
+                  >
+                    <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Business ID</label>
+                    <div className="relative">
+                      <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
+                      <input 
+                        type="text" 
+                        placeholder="Enter your Business ID (e.g. 1)"
+                        value={businessIdInput}
+                        onChange={(e) => setBusinessIdInput(e.target.value)}
+                        className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] focus:ring-2 focus:ring-[#006a61]/10 outline-none transition-all"
+                        required={isStaff}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+ 
                 <div>
-                  <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Username / Email</label>
+                  <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">
+                    {isStaff ? 'Login Email Address' : 'Email Address'}
+                  </label>
                   <div className="relative">
-                    <UserCheck size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
+                    <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
                     <input 
-                      type="text" 
-                      placeholder="Enter your username or email"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      type="email" 
+                      placeholder={isStaff ? 'staff@smartbill.com' : 'john@example.com'}
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
                       className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] focus:ring-2 focus:ring-[#006a61]/10 outline-none transition-all"
                       required
                     />
                   </div>
                 </div>
-
+ 
                 <div>
                   <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Password</label>
                   <div className="relative">
@@ -347,6 +515,15 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
                       className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] focus:ring-2 focus:ring-[#006a61]/10 outline-none transition-all"
                       required
                     />
+                  </div>
+                  <div className="flex justify-end mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('forgot'); setErrorText(''); }}
+                      className="text-xs text-[#006a61] hover:underline font-bold transition-all cursor-pointer"
+                    >
+                      Forgot Password?
+                    </button>
                   </div>
                 </div>
               </motion.div>
@@ -683,7 +860,16 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
 
           {/* CONTROL NAVIGATION BUTTONS */}
           <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-            {!isLoginMode && step > 1 && (
+            {authMode !== 'login' ? (
+              <button 
+                type="button"
+                onClick={() => { setAuthMode('login'); setErrorText(''); }}
+                className="px-4 py-2.5 border border-[#c6c6cd] text-[#45464d] font-display text-xs font-bold rounded-lg hover:bg-[#f8f9ff] active:scale-98 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <ArrowLeft size={13} />
+                <span>Back to Login</span>
+              </button>
+            ) : (!isLoginMode && step > 1) ? (
               <button 
                 type="button"
                 onClick={handlePrevStep}
@@ -692,7 +878,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
                 <ArrowLeft size={13} />
                 <span>Back</span>
               </button>
-            )}
+            ) : null}
 
             <button 
               type="submit"
@@ -703,6 +889,16 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
                 <>
                   <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin"></span>
                   <span>Processing...</span>
+                </>
+              ) : authMode === 'forgot' ? (
+                <>
+                  <span>Request Reset Code</span>
+                  <ArrowRight size={13} />
+                </>
+              ) : authMode === 'reset' ? (
+                <>
+                  <span>Confirm Password Reset</span>
+                  <ArrowRight size={13} />
                 </>
               ) : isLoginMode ? (
                 <>

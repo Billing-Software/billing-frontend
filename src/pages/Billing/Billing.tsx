@@ -17,10 +17,13 @@ import { customerService } from '../../services/customer.service';
 import { serviceCatalogService } from '../../services/service.service';
 import { billService } from '../../services/bill.service';
 import { branchService } from '../../services/branch.service';
+import { categoryService, Category } from '../../services/category.service';
 import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
 
 export default function Billing() {
-  const { currentBranch } = useAuth();
+  const { currentUser, currentBranch } = useAuth();
+  const { showToast } = useToast();
 
   // API Scoped States
   const [services, setServices] = useState<Service[]>([]);
@@ -33,7 +36,9 @@ export default function Billing() {
   // POS States
   const [cart, setCart] = useState<BillItem[]>([]);
   const [filterQuery, setFilterQuery] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [dbCategories, setDbCategories] = useState<Category[]>([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
   
   // Custom discount calculation
   const [discountCode, setDiscountCode] = useState<string>('');
@@ -58,14 +63,16 @@ export default function Billing() {
   const fetchInitialData = async () => {
     try {
       setIsLoading(true);
-      const [servicesData, customersData, branchesData] = await Promise.all([
+      const [servicesData, customersData, branchesData, categoriesData] = await Promise.all([
         serviceCatalogService.getAll(),
         customerService.getAll(),
-        branchService.getAll()
+        branchService.getAll(),
+        categoryService.getAll()
       ]);
       
       setServices(servicesData);
       setBranches(branchesData);
+      setDbCategories(categoriesData.filter((c: any) => c.type === 'Service'));
 
       let activeCusts = customersData;
       let walkIn = customersData.find((c: any) => c.isWalkIn);
@@ -96,15 +103,17 @@ export default function Billing() {
     fetchInitialData();
   }, [currentBranch]);
 
-  // Categories extraction
-  const categories = ['All', ...Array.from(new Set(services.filter(s => s.status === 'Active').map(s => s.category)))];
+
 
   // Selected customer info
   const activeCustomer = customers.find(c => c.id === selectedCustomerId) || customers[0] || { name: 'Walk-In Customer', phone: 'N/A' };
 
   // Helper: Icons mapper
-  const getCategoryIcon = (iconName: string) => {
-    switch (iconName) {
+  const getCategoryIcon = (imageUrl: string) => {
+    if (imageUrl && (imageUrl.startsWith('http') || imageUrl.includes('/uploads/'))) {
+      return <img src={imageUrl} alt="Service Icon" className="w-full h-full object-cover rounded-full" />;
+    }
+    switch (imageUrl) {
       case 'content_cut': return <span className="font-sans font-semibold text-lg">✂️</span>;
       case 'face': return <span className="font-sans font-semibold text-lg">👤</span>;
       case 'spa': return <span className="font-sans font-semibold text-lg">🌸</span>;
@@ -176,22 +185,22 @@ export default function Billing() {
       setNewCustName('');
       setNewCustPhone('');
     } catch (err: any) {
-      alert("Error saving customer: " + (err.response?.data || err.message));
+      showToast("Error saving customer: " + (err.response?.data || err.message), "error");
     }
   };
 
   // Trigger Bill compilation
   const handleCheckout = async () => {
     if (cart.length === 0) {
-      alert("Please add services to the current bill first!");
+      showToast("Please add services to the current bill first!", "warning");
       return;
     }
     if (!selectedBranchId) {
-      alert("No branch selected. Please verify branch configuration.");
+      showToast("No branch selected. Please verify branch configuration.", "error");
       return;
     }
     if (!selectedCustomerId) {
-      alert("No client selected. Please choose or register a client.");
+      showToast("No client selected. Please choose or register a client.", "warning");
       return;
     }
 
@@ -210,7 +219,7 @@ export default function Billing() {
       const billPayload = {
         branchId: selectedBranchId,
         customerId: selectedCustomerId,
-        createdByStaffId: null,
+        createdByStaffId: currentUser?.staffId || null,
         billNumber,
         subtotal,
         discountCode: activeDiscountPercent > 0 ? activeDiscountCode : null,
@@ -249,9 +258,9 @@ export default function Billing() {
 
       setGeneratedBill(mappedBill);
       setCart([]); // Clear cart
-      alert("Invoice processed successfully!");
+      showToast("Invoice processed successfully!", "success");
     } catch (err: any) {
-      alert("Error compiling bill: " + (err.response?.data || err.message));
+      showToast("Error compiling bill: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -260,18 +269,18 @@ export default function Billing() {
     if (discountCode.toUpperCase() === 'VIP10') {
       setActiveDiscountCode('VIP10');
       setActiveDiscountPercent(10);
-      alert("Promo 'VIP10' applied! 10% Discount included.");
+      showToast("Promo 'VIP10' applied! 10% Discount included.", "success");
     } else if (discountCode.endsWith('%')) {
       const parsedVal = parseInt(discountCode.replace('%', ''));
       if (!isNaN(parsedVal) && parsedVal >= 0 && parsedVal <= 100) {
         setActiveDiscountCode(`CUSTOM-${parsedVal}%`);
         setActiveDiscountPercent(parsedVal);
-        alert(`Custom ${parsedVal}% promo rate injected!`);
+        showToast(`Custom ${parsedVal}% promo rate injected!`, "success");
       }
     } else {
       setActiveDiscountCode('CUSTOM');
       setActiveDiscountPercent(5);
-      alert("Custom coupon registered: 5% flat discount activated!");
+      showToast("Custom coupon registered: 5% flat discount activated!", "success");
     }
     setDiscountCode('');
   };
@@ -280,7 +289,11 @@ export default function Billing() {
   const filteredServices = services
     .filter(s => s.status === 'Active')
     .filter(s => {
-      const matchesCategory = selectedCategory === 'All' || s.category === selectedCategory;
+      let matchesCategory = true;
+      if (selectedCategoryIds.length > 0) {
+        const allowedNames = selectedCategoryIds.flatMap(id => getDescendantNames(id, dbCategories));
+        matchesCategory = allowedNames.includes(s.category.toLowerCase());
+      }
       const matchesQuery = s.name.toLowerCase().includes(filterQuery.toLowerCase()) || 
                            s.category.toLowerCase().includes(filterQuery.toLowerCase()) ||
                            s.sku.toLowerCase().includes(filterQuery.toLowerCase());
@@ -428,23 +441,108 @@ export default function Billing() {
           </div>
 
           {/* Category Chips Horizontal Filter List */}
-          <div className="flex gap-2 overflow-x-auto pb-3 mb-4 border-b border-[#e2e8f0]/50 shrink-0">
-            {categories.map(cat => {
-              const isSelected = selectedCategory === cat;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`shrink-0 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    isSelected 
-                      ? 'bg-[#006a61] text-white shadow-sm shadow-[#006a61]/10' 
-                      : 'bg-[#eff4ff] text-[#45464d] hover:bg-[#dce9ff] hover:text-[#0b1c30]'
-                  }`}
-                >
-                  {cat}
-                </button>
-              );
-            })}
+          <div className="relative shrink-0 flex items-center gap-3 mb-4 pb-3 border-b border-[#e2e8f0]/50 select-none">
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all select-none ${
+                selectedCategoryIds.length > 0 
+                  ? 'bg-[#006a61]/10 border-[#006a61] text-[#006f66]' 
+                  : 'bg-[#eff4ff] border-transparent text-[#45464d] hover:bg-[#dce9ff]'
+              }`}
+            >
+              <span>Filter Categories</span>
+              {selectedCategoryIds.length > 0 && (
+                <span className="bg-[#006a61] text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                  {selectedCategoryIds.length}
+                </span>
+              )}
+            </button>
+
+            {isFilterOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setIsFilterOpen(false)}
+                />
+                <div className="absolute top-9 left-0 z-50 w-72 max-h-[350px] overflow-y-auto bg-white border border-[#e2e8f0] rounded-xl shadow-lg p-3 space-y-2 mt-1">
+                  <div className="flex justify-between items-center pb-2 border-b">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Select Categories</span>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setSelectedCategoryIds([]);
+                      }} 
+                      className="text-[10px] font-bold text-red-500 hover:underline"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {dbCategories.length === 0 ? (
+                      <p className="text-[10px] text-gray-400 font-semibold italic text-center py-2">No categories configured</p>
+                    ) : (() => {
+                      const tree = buildCategoryTree(dbCategories);
+                      const flat = flattenCategoryTree(tree);
+                      return flat.map(({ category: c, depth }) => {
+                        const isChecked = selectedCategoryIds.includes(c.id);
+                        return (
+                          <label key={c.id} style={{ marginLeft: `${depth * 16}px` }} className="flex items-center gap-2 py-1 px-1.5 rounded hover:bg-[#f8f9ff] cursor-pointer text-xs font-semibold text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setSelectedCategoryIds(prev => {
+                                  const temp = new Set<number>(prev);
+                                  toggleCategoryCheck(c.id, checked, dbCategories, temp);
+                                  return Array.from(temp);
+                                });
+                              }}
+                              className="accent-[#006a61] h-3.5 w-3.5 rounded border-gray-300"
+                            />
+                            <span>{c.name}</span>
+                          </label>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Display Selected Categories as Chips */}
+            <div className="flex gap-2 overflow-x-auto pb-1 max-w-full">
+              {selectedCategoryIds.length === 0 ? (
+                <span className="px-2.5 py-1 text-[10px] bg-[#eff4ff] text-[#45464d] rounded-md font-bold italic">
+                  Showing all categories
+                </span>
+              ) : (
+                dbCategories
+                  .filter(c => selectedCategoryIds.includes(c.id))
+                  .map(c => (
+                    <span 
+                      key={c.id} 
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1 bg-[#006a61]/5 border border-[#006a61]/25 text-[#006f66] text-[10px] font-bold rounded-md"
+                    >
+                      {c.name}
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setSelectedCategoryIds(prev => {
+                            const temp = new Set<number>(prev);
+                            toggleCategoryCheck(c.id, false, dbCategories, temp);
+                            return Array.from(temp);
+                          });
+                        }} 
+                        className="hover:text-red-500 font-sans font-bold"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+              )}
+            </div>
           </div>
 
           {/* Service Cards Grid layout */}
@@ -458,7 +556,7 @@ export default function Billing() {
                   className="group flex flex-col items-center justify-center p-4 bg-white border border-[#e2e8f0]/60 rounded-xl hover:border-[#006a61] hover:shadow-sm transition-all aspect-square relative overflow-hidden"
                 >
                   <div className="w-12 h-12 bg-[#eff4ff] rounded-full flex items-center justify-center mb-2 group-hover:bg-[#86f2e4] transition-colors leading-none">
-                    {getCategoryIcon(service.iconName)}
+                    {getCategoryIcon(service.imageUrl)}
                   </div>
                   <span className="font-sans text-xs font-semibold text-[#0b1c30] text-center line-clamp-2 leading-tight">
                     {service.name}
@@ -695,7 +793,7 @@ export default function Billing() {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    alert("Sending direct notification to printer terminal...");
+                    showToast("Sending direct notification to printer terminal...", "info");
                   }}
                   className="flex-1 py-2 border border-[#c6c6cd] rounded font-sans text-xs font-semibold hover:bg-[#eff4ff] flex items-center justify-center gap-1.5"
                 >
@@ -714,4 +812,67 @@ export default function Billing() {
       </AnimatePresence>
     </div>
   );
+}
+
+interface CategoryNode {
+  category: Category;
+  children: CategoryNode[];
+}
+
+interface FlattenedNode {
+  category: Category;
+  depth: number;
+}
+
+function buildCategoryTree(flatCats: Category[]): CategoryNode[] {
+  const map: Record<number, CategoryNode> = {};
+  flatCats.forEach(c => {
+    map[c.id] = { category: c, children: [] };
+  });
+  const roots: CategoryNode[] = [];
+  flatCats.forEach(c => {
+    const node = map[c.id];
+    if (c.parentId && map[c.parentId]) {
+      map[c.parentId].children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  return roots;
+}
+
+function flattenCategoryTree(nodes: CategoryNode[], depth = 0): FlattenedNode[] {
+  const result: FlattenedNode[] = [];
+  nodes.forEach(node => {
+    result.push({ category: node.category, depth });
+    if (node.children.length > 0) {
+      result.push(...flattenCategoryTree(node.children, depth + 1));
+    }
+  });
+  return result;
+}
+
+function getDescendantNames(catId: number, flatCats: Category[]): string[] {
+  const names: string[] = [];
+  const cat = flatCats.find(c => c.id === catId);
+  if (cat) {
+    names.push(cat.name.toLowerCase());
+  }
+  const children = flatCats.filter(c => c.parentId === catId);
+  children.forEach(child => {
+    names.push(...getDescendantNames(child.id, flatCats));
+  });
+  return names;
+}
+
+function toggleCategoryCheck(catId: number, checked: boolean, allCats: Category[], selected: Set<number>) {
+  if (checked) {
+    selected.add(catId);
+  } else {
+    selected.delete(catId);
+  }
+  const children = allCats.filter(c => c.parentId === catId);
+  children.forEach(c => {
+    toggleCategoryCheck(c.id, checked, allCats, selected);
+  });
 }

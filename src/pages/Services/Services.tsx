@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, Trash2, Edit2, ArrowUpDown, Loader2 } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ArrowUpDown, Loader2, Package } from 'lucide-react';
 import { Service } from '../../types';
 import { serviceCatalogService } from '../../services/service.service';
+import { categoryService, Category } from '../../services/category.service';
+import { apiClient } from '../../services/api.client';
+import { useToast } from '../../hooks/useToast';
 
 export default function Services() {
+  const { showToast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -24,6 +28,8 @@ export default function Services() {
   const [formPrice, setFormPrice] = useState<number>(35.00);
   const [formTax, setFormTax] = useState<number>(5.0);
   const [formStatus, setFormStatus] = useState<'Active' | 'Inactive'>('Active');
+  const [formImageUrl, setFormImageUrl] = useState<string>('');
+  const [dbCategories, setDbCategories] = useState<Category[]>([]);
 
   // Sorting
   const [sortField, setSortField] = useState<'name' | 'basePrice'>('name');
@@ -41,12 +47,29 @@ export default function Services() {
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const list = await categoryService.getAll();
+      const serviceCats = list.filter(c => c.type === 'Service');
+      setDbCategories(serviceCats);
+      if (serviceCats.length > 0 && !editingService) {
+        setFormCategory(serviceCats[0].name);
+      }
+    } catch (e) {
+      console.error('Error loading categories', e);
+    }
+  };
+
   useEffect(() => {
     fetchServices();
+    fetchCategories();
   }, []);
 
-  // Categories list derived dynamically
-  const categories = Array.from(new Set(services.map(s => s.category)));
+  // Categories list derived dynamically from DB + current services
+  const categories = Array.from(new Set([
+    ...dbCategories.map(c => c.name),
+    ...services.map(s => s.category)
+  ]));
 
   // Handle Create or Update save
   const handleSaveService = async (e: React.FormEvent) => {
@@ -63,9 +86,9 @@ export default function Services() {
           basePrice: Number(formPrice),
           taxRate: Number(formTax),
           status: formStatus,
-          iconName: editingService.iconName || 'spa'
+          imageUrl: formImageUrl || null
         });
-        alert("Service catalog updated successfully!");
+        showToast("Service catalog updated successfully!", "success");
       } else {
         // Add mode
         await serviceCatalogService.create({
@@ -75,9 +98,9 @@ export default function Services() {
           basePrice: Number(formPrice),
           taxRate: Number(formTax),
           status: formStatus,
-          iconName: 'spa' // default icon
+          imageUrl: formImageUrl || null
         });
-        alert("New service added successfully!");
+        showToast("New service added successfully!", "success");
       }
 
       // Reset Form & Reload
@@ -85,13 +108,14 @@ export default function Services() {
       setEditingService(null);
       setFormName('');
       setFormSku('');
-      setFormCategory('Hair Care');
+      setFormCategory(dbCategories[0]?.name || 'Hair Care');
       setFormPrice(35.00);
       setFormTax(5.0);
       setFormStatus('Active');
+      setFormImageUrl('');
       fetchServices();
     } catch (err: any) {
-      alert("Error saving service: " + (err.response?.data || err.message));
+      showToast("Error saving service: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -104,16 +128,17 @@ export default function Services() {
     setFormPrice(service.basePrice);
     setFormTax(service.taxRate);
     setFormStatus(service.status);
+    setFormImageUrl(service.imageUrl || '');
     setIsFormOpen(true);
   };
 
   const handleDeleteService = async (id: number) => {
     try {
       await serviceCatalogService.delete(id);
-      alert("Service removed successfully.");
+      showToast("Service removed successfully.", "success");
       fetchServices();
     } catch (err: any) {
-      alert("Error deleting service: " + (err.response?.data || err.message));
+      showToast("Error deleting service: " + (err.response?.data || err.message), "error");
     }
   };
 
@@ -220,13 +245,19 @@ export default function Services() {
                   onChange={(e) => setFormCategory(e.target.value)}
                   className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
                 >
-                  <option value="Hair Care">Hair Care</option>
-                  <option value="Beard & Shave">Beard & Shave</option>
-                  <option value="Massage">Massage</option>
-                  <option value="Products">Products</option>
-                  <option value="Repair">Repair</option>
-                  <option value="Maintenance">Maintenance</option>
-                  <option value="Consulting">Consulting</option>
+                  {dbCategories.length > 0 ? (
+                    dbCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+                  ) : (
+                    <>
+                      <option value="Hair Care">Hair Care</option>
+                      <option value="Beard & Shave">Beard & Shave</option>
+                      <option value="Massage">Massage</option>
+                      <option value="Products">Products</option>
+                      <option value="Repair">Repair</option>
+                      <option value="Maintenance">Maintenance</option>
+                      <option value="Consulting">Consulting</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -266,6 +297,75 @@ export default function Services() {
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
                 </select>
+              </div>
+
+              <div className="col-span-full bg-[#f8f9ff] p-4 rounded-xl border border-[#eff4ff] space-y-3">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-3.5">
+                  {formImageUrl && (formImageUrl.startsWith('http') || formImageUrl.includes('/uploads/')) ? (
+                    <img 
+                      src={formImageUrl} 
+                      alt="Service Icon Preview" 
+                      className="w-12 h-12 rounded-lg border border-[#c6c6cd] object-cover bg-white shadow-sm shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg border border-dashed border-[#c6c6cd] bg-white text-[#7c839b] flex items-center justify-center shadow-sm shrink-0">
+                      <Package className="opacity-40" size={20} />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <h4 className="text-[11px] font-bold text-[#0b1c30] uppercase leading-none">Service Catalog Image / Icon</h4>
+                    <p className="text-[10px] text-[#7c839b] font-medium leading-snug mt-1.5">
+                      Upload a professional service thumbnail image to show on billing screens, or paste a custom image URL path below.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap gap-2 justify-center sm:justify-start">
+                      <label className="bg-[#006a61] hover:bg-opacity-90 text-white text-xs font-bold px-3 py-1.5 rounded cursor-pointer transition-all flex items-center gap-1.5">
+                        <span>Upload File</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                const formData = new FormData();
+                                formData.append('file', file);
+                                const response = await apiClient.post('/upload', formData, {
+                                  headers: {
+                                    'Content-Type': 'multipart/form-data',
+                                  },
+                                });
+                                setFormImageUrl(response.data.url);
+                                showToast("Service image uploaded successfully!", "success");
+                              } catch (err: any) {
+                                showToast("Failed to upload service image: " + (err.response?.data || err.message), "error");
+                              }
+                            }
+                          }}
+                        />
+                      </label>
+                      {formImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFormImageUrl('')}
+                          className="border border-[#c6c6cd] bg-white hover:bg-red-50 text-red-600 text-xs font-semibold px-3 py-1.5 rounded transition-all"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[9px] font-bold text-[#7c839b] uppercase block mb-1">Or Paste Image URL / Local Path</label>
+                  <input 
+                    type="text" 
+                    value={formImageUrl}
+                    onChange={(e) => setFormImageUrl(e.target.value)}
+                    placeholder="https://example.com/assets/haircut.webp or /uploads/custom-path.webp" 
+                    className="w-full text-xs font-semibold px-3 py-2 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none"
+                  />
+                </div>
               </div>
 
               <div className="col-span-full flex gap-2 justify-end">
@@ -368,8 +468,18 @@ export default function Services() {
                   >
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-[#eff4ff] flex items-center justify-center text-[#45464d]">
-                          {service.iconName === 'spa' ? '🌸' : service.iconName === 'content_cut' ? '✂️' : service.iconName === 'build' ? '🛠️' : '📦'}
+                        <div className="w-8 h-8 rounded-full bg-[#eff4ff] overflow-hidden flex items-center justify-center text-[#45464d] shrink-0 border border-[#e2e8f0]">
+                          {service.imageUrl && (service.imageUrl.startsWith('http') || service.imageUrl.includes('/uploads/')) ? (
+                            <img src={service.imageUrl} alt={service.name} className="w-full h-full object-cover" />
+                          ) : service.imageUrl === 'spa' ? (
+                            '🌸'
+                          ) : service.imageUrl === 'content_cut' ? (
+                            '✂️'
+                          ) : service.imageUrl === 'build' ? (
+                            '🛠️'
+                          ) : (
+                            <Package size={14} className="text-[#006a61]" />
+                          )}
                         </div>
                         <div>
                           <p className="text-xs font-bold text-[#0b1c30]">{service.name}</p>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, Bell, Grid, Share2, Plus, Menu, Building2 } from 'lucide-react';
 import { User } from '../../types';
+import logoText from '../../assets/BillCom-text.svg';
 
 interface HeaderProps {
   currentBranch: 'Main' | 'Downtown';
@@ -40,7 +41,7 @@ export default function Header({
 
         {/* Brand Logo for Mobile Only */}
         <div className="md:hidden flex items-center gap-1.5">
-          <span className="font-display text-[#000000] font-black text-base tracking-tight leading-none">SmartBill Pro</span>
+          <img src={logoText} alt="SmartBill Pro" className="h-6 object-contain" />
         </div>
 
         {/* Global Search Bar (Visible except on very small mobile) */}
@@ -57,31 +58,7 @@ export default function Header({
         </div>
       </div>
 
-      {/* Middle section: Branch selectors */}
-      <nav id="branch-nav" className="hidden md:flex items-center gap-6 h-full">
-        <button
-          id="branch-main-btn"
-          onClick={() => onChangeBranch('Main')}
-          className={`relative h-16 flex items-center px-1 text-xs font-semibold leading-none tracking-wider uppercase transition-all ${
-            currentBranch === 'Main' 
-              ? 'text-[#006a61] border-b-2 border-[#006a61]' 
-              : 'text-[#45464d] hover:text-[#0b1c30]'
-          }`}
-        >
-          Main Branch
-        </button>
-        <button
-          id="branch-downtown-btn"
-          onClick={() => onChangeBranch('Downtown')}
-          className={`relative h-16 flex items-center px-1 text-xs font-semibold leading-none tracking-wider uppercase transition-all ${
-            currentBranch === 'Downtown' 
-              ? 'text-[#006a61] border-b-2 border-[#006a61]' 
-              : 'text-[#45464d] hover:text-[#0b1c30]'
-          }`}
-        >
-          Downtown Hub
-        </button>
-      </nav>
+
 
       {/* Right section: Quick actions, notifications, user profile */}
       <div className="flex items-center gap-3">
