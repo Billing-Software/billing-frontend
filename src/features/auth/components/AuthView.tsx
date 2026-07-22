@@ -246,9 +246,9 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
           businessPostalCode,
           businessCountry: 'India',
           gstIn,
-          logoUrl: logoUrl.trim() || undefined,
-          website: website.trim() || undefined,
-          businessEmail: businessEmail.trim() || email,
+          logoUrl: (logoUrl || '').trim() || undefined,
+          website: (website || '').trim() || undefined,
+          businessEmail: (businessEmail || '').trim() || email,
           defaultTaxRate: Number(defaultTaxRate),
           pricesIncludeTax
         });
@@ -256,7 +256,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
         // Set the user avatarUrl state locally to show either the uploaded avatarUrl or fallback to business logo
         const userWithAvatar = {
           ...user,
-          avatarUrl: avatarUrl.trim() || logoUrl.trim() || undefined
+          avatarUrl: (avatarUrl || '').trim() || (logoUrl || '').trim() || undefined
         };
         if (user.onboardingPending) {
           localStorage.setItem('onboarding_pending', 'true');
@@ -640,7 +640,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
                     {/* Logo preview widget */}
                     <div className="bg-[#f8f9ff] p-4 rounded-xl border border-[#eff4ff] space-y-3">
                       <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-3.5">
-                        {logoUrl.trim() ? (
+                        {logoUrl && logoUrl.trim() ? (
                           <img 
                             src={logoUrl} 
                             alt="Logo Preview" 
@@ -930,7 +930,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
               <div className="text-center pt-2.5 border-t border-[#f1f5f9] w-full">
                 <span className="text-[11px] text-slate-400 font-semibold">New to SmartBill Pro? </span>
                 <a 
-                  href={`${MARKETING_URL}/pricing`}
+                  href={`${MARKETING_URL}/#/pricing`}
                   className="text-[11px] text-[#006a61] hover:underline font-bold transition-all"
                 >
                   Create an Account
@@ -949,11 +949,11 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
           Protected Workspace · Multi-Tenant Gateway
         </p>
         <div className="flex justify-center gap-3 text-[10px] font-bold text-[#006a61]">
-          <a href={`${MARKETING_URL}/terms`} target="_blank" rel="noopener noreferrer" className="hover:underline">
+          <a href={`${MARKETING_URL}/#/terms`} target="_blank" rel="noopener noreferrer" className="hover:underline">
             Terms of Service
           </a>
           <span className="text-slate-300 select-none">•</span>
-          <a href={`${MARKETING_URL}/privacy`} target="_blank" rel="noopener noreferrer" className="hover:underline">
+          <a href={`${MARKETING_URL}/#/privacy`} target="_blank" rel="noopener noreferrer" className="hover:underline">
             Privacy Policy
           </a>
         </div>

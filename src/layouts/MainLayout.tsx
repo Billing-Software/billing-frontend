@@ -173,7 +173,7 @@ export default function MainLayout({
               {/* Mobile Logout HUD */}
               <div className="border-t pt-4">
                 <div className="flex items-center gap-3 mb-4">
-                  {currentUser.avatarUrl && currentUser.avatarUrl.trim() !== '' && currentUser.avatarUrl !== 'null' && currentUser.avatarUrl !== 'undefined' ? (
+                  {currentUser?.avatarUrl && typeof currentUser.avatarUrl === 'string' && currentUser.avatarUrl.trim() !== '' && currentUser.avatarUrl !== 'null' && currentUser.avatarUrl !== 'undefined' ? (
                     <img 
                       referrerPolicy="no-referrer"
                       src={currentUser.avatarUrl} 

@@ -101,7 +101,7 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
 
         {user && (
           <div className="mt-4 pt-3 flex items-center gap-2.5 px-1 border-t border-[#e2e8f0]/40">
-            {user.avatarUrl && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
+            {user?.avatarUrl && typeof user.avatarUrl === 'string' && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
               <img 
                 referrerPolicy="no-referrer"
                 src={user.avatarUrl} 

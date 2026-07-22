@@ -307,7 +307,7 @@ export default function Settings() {
 
               <div className="sm:col-span-2 bg-[#f8f9ff] p-4 rounded-xl border border-[#eff4ff] space-y-3">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-3.5">
-                  {logoUrl.trim() ? (
+                  {logoUrl && logoUrl.trim() ? (
                     <img 
                       src={logoUrl} 
                       alt="Logo Preview" 

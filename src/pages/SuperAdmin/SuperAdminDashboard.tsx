@@ -72,7 +72,7 @@ export default function SuperAdminDashboard() {
 
   const handleCopyLink = (token: string) => {
     const marketingUrl = (import.meta as any).env?.VITE_MARKETING_URL || 'http://localhost:5173';
-    const resumeUrl = `${marketingUrl}/checkout/resume?token=${token}`;
+    const resumeUrl = `${marketingUrl}/#/checkout/resume?token=${token}`;
     navigator.clipboard.writeText(resumeUrl);
     alert('Checkout recovery magic link copied to clipboard!');
   };

@@ -250,7 +250,7 @@ export default function Onboarding() {
                   {/* Logo preview widget */}
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                     <div className="flex items-start gap-3">
-                      {profileData.logoUrl.trim() ? (
+                      {profileData.logoUrl && profileData.logoUrl.trim() ? (
                         <img 
                           src={profileData.logoUrl} 
                           alt="Logo Preview" 

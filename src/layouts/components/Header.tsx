@@ -129,7 +129,7 @@ export default function Header({
         {/* User Portrait preview */}
         {user && (
           <div className="flex items-center gap-2 md:border-l md:border-[#e2e8f0]/40 md:pl-3">
-            {user.avatarUrl && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
+            {user?.avatarUrl && typeof user.avatarUrl === 'string' && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
               <img 
                 referrerPolicy="no-referrer"
                 src={user.avatarUrl} 
