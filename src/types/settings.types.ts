@@ -9,8 +9,7 @@ export interface BusinessProfile {
   pricesIncludeTax: boolean;
 }
 
-export interface WhatsAppSettings {
-  apiKey: string;
-  isConnected: boolean;
-  templates: string[];
-}
+// Old WhatsAppSettings interface has been replaced.
+// New types are in services/whatsapp.service.ts:
+//   - WhatsAppAccountStatus
+//   - MessageLog

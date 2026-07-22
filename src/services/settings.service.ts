@@ -1,19 +1,7 @@
 import { apiClient } from './api.client';
 
+// WhatsApp operations have moved to whatsapp.service.ts
+// This file is reserved for future non-WhatsApp settings.
 export const settingsService = {
-  getWhatsAppSettings: async () => {
-    const response = await apiClient.get('/settings/whatsapp');
-    return response.data;
-  },
-  updateWhatsAppSettings: async (settingsData: any) => {
-    const response = await apiClient.put('/settings/whatsapp', settingsData);
-    return response.data;
-  },
-  addWhatsAppTemplate: async (templateData: any) => {
-    const response = await apiClient.post('/settings/whatsapp/templates', templateData);
-    return response.data;
-  },
-  deleteWhatsAppTemplate: async (id: number) => {
-    await apiClient.delete(`/settings/whatsapp/templates/${id}`);
-  }
+  // Future non-WhatsApp settings methods will go here.
 };

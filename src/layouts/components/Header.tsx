@@ -1,11 +1,12 @@
 import React from 'react';
 import { Search, Bell, Grid, Share2, Plus, Menu, Building2 } from 'lucide-react';
-import { User } from '../../types';
+import { User, Branch } from '../../types';
+import { useAuth } from '../../hooks/useAuth';
 import logoText from '../../assets/BillCom-text.svg';
 
 interface HeaderProps {
-  currentBranch: 'Main' | 'Downtown';
-  onChangeBranch: (branch: 'Main' | 'Downtown') => void;
+  currentBranch: Branch | null;
+  onChangeBranch: (branch: Branch | null) => void;
   onOpenMobileMenu: () => void;
   onSearch: (term: string) => void;
   searchText: string;
@@ -26,6 +27,8 @@ export default function Header({
   user,
   onLogout
 }: HeaderProps) {
+  const { branches } = useAuth();
+
   return (
     <header className="flex justify-between items-center h-16 px-4 md:px-8 bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#e2e8f0] shrink-0">
       {/* Left section: Hamburger on mobile, Search bar on desktop */}
@@ -58,9 +61,7 @@ export default function Header({
         </div>
       </div>
 
-
-
-      {/* Right section: Quick actions, notifications, user profile */}
+      {/* Right section: Quick actions, notifications, branch selection, user profile */}
       <div className="flex items-center gap-3">
         {/* Quick Actions (only on larger screens to avoid overlay clutter) */}
         <div className="hidden lg:flex items-center gap-2">
@@ -85,6 +86,29 @@ export default function Header({
         {/* Small spacer/line */}
         <div className="hidden lg:block h-6 w-[1px] bg-[#e2e8f0]/80 mx-1"></div>
 
+        {/* Dynamic Branch Switcher Dropdown */}
+        {branches.length > 0 && (
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-[#e2e8f0] px-2.5 py-1.5 rounded-lg shadow-sm">
+            <Building2 size={14} className="text-[#006a61] shrink-0" />
+            <select
+              id="branch-switcher"
+              value={currentBranch?.id || ''}
+              onChange={(e) => {
+                const bId = parseInt(e.target.value, 10);
+                const selected = branches.find(b => b.id === bId);
+                if (selected) onChangeBranch(selected);
+              }}
+              className="bg-transparent border-none text-[10px] font-bold text-slate-700 focus:outline-none focus:ring-0 max-w-[120px] pr-6 cursor-pointer uppercase tracking-wider outline-none p-0"
+            >
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Notifications & System Icons */}
         <button 
           id="notification-bell"
@@ -102,7 +126,7 @@ export default function Header({
           <Grid size={18} />
         </button>
  
-        {/* Simple User Portrait popup preview trigger */}
+        {/* User Portrait preview */}
         {user && (
           <div className="flex items-center gap-2 md:border-l md:border-[#e2e8f0]/40 md:pl-3">
             {user.avatarUrl && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (

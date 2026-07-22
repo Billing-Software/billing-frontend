@@ -8,4 +8,5 @@ export interface User {
   avatarUrl?: string;
   token?: string;
   staffId?: number;
+  onboardingPending?: boolean;
 }

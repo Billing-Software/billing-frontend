@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Search, 
-  History, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  Receipt, 
-  Send, 
+import {
+  Search,
+  History,
+  Plus,
+  Minus,
+  Trash2,
+  Receipt,
+  Send,
   CheckCircle,
   Percent,
   Loader2
@@ -20,6 +20,7 @@ import { branchService } from '../../services/branch.service';
 import { categoryService, Category } from '../../services/category.service';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
+import { whatsAppService } from '../../services/whatsapp.service';
 
 export default function Billing() {
   const { currentUser, currentBranch } = useAuth();
@@ -39,15 +40,15 @@ export default function Billing() {
   const [dbCategories, setDbCategories] = useState<Category[]>([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
-  
+
   // Custom discount calculation
   const [discountCode, setDiscountCode] = useState<string>('');
   const [activeDiscountCode, setActiveDiscountCode] = useState<string>('VIP10');
   const [activeDiscountPercent, setActiveDiscountPercent] = useState<number>(10);
-  
+
   // Payment methods: 'Cash' | 'UPI' | 'Card'
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card'>('Cash');
-  
+
   // Add Customer modal / form view state
   const [isAddingCustomer, setIsAddingCustomer] = useState<boolean>(false);
   const [newCustName, setNewCustName] = useState<string>('');
@@ -59,6 +60,9 @@ export default function Billing() {
   // Invoice success feedback state
   const [generatedBill, setGeneratedBill] = useState<Bill | null>(null);
 
+  // Checkout loading/progress state
+  const [isCheckingOut, setIsCheckingOut] = useState<boolean>(false);
+
   // Fetch initial data
   const fetchInitialData = async () => {
     try {
@@ -69,7 +73,7 @@ export default function Billing() {
         branchService.getAll(),
         categoryService.getAll()
       ]);
-      
+
       setServices(servicesData);
       setBranches(branchesData);
       setDbCategories(categoriesData.filter((c: any) => c.type === 'Service'));
@@ -86,9 +90,9 @@ export default function Billing() {
       }
 
       if (branchesData.length > 0) {
-        // Find branch matching currentBranch (Main / Downtown)
+        // Find branch matching currentBranch object ID
         const matched = branchesData.find(
-          (b: any) => b.name.toLowerCase().includes(currentBranch.toLowerCase())
+          (b: any) => b.id === currentBranch?.id
         ) || branchesData[0];
         setSelectedBranchId(matched.id);
       }
@@ -102,6 +106,23 @@ export default function Billing() {
   useEffect(() => {
     fetchInitialData();
   }, [currentBranch]);
+
+  // Load persistent cart state from local storage on load
+  useEffect(() => {
+    const saved = localStorage.getItem('smartbill_pos_cart');
+    if (saved) {
+      try {
+        setCart(JSON.parse(saved));
+      } catch (err) {
+        console.error('Failed to parse persistent POS cart:', err);
+      }
+    }
+  }, []);
+
+  // Sync cart mutations to local storage immediately
+  useEffect(() => {
+    localStorage.setItem('smartbill_pos_cart', JSON.stringify(cart));
+  }, [cart]);
 
 
 
@@ -128,9 +149,9 @@ export default function Billing() {
     setCart(prev => {
       const existing = prev.find(item => item.serviceId === service.id);
       if (existing) {
-        return prev.map(item => 
-          item.serviceId === service.id 
-            ? { ...item, quantity: item.quantity + 1, lineTotal: (item.quantity + 1) * item.unitPrice } 
+        return prev.map(item =>
+          item.serviceId === service.id
+            ? { ...item, quantity: item.quantity + 1, lineTotal: (item.quantity + 1) * item.unitPrice }
             : item
         );
       } else {
@@ -204,6 +225,8 @@ export default function Billing() {
       return;
     }
 
+    setIsCheckingOut(true);
+
     try {
       const itemsDto = cart.map(item => ({
         serviceId: item.serviceId,
@@ -215,6 +238,9 @@ export default function Billing() {
 
       // Generate Invoice Display Reference
       const billNumber = `INV-${Date.now().toString().slice(-6)}`;
+
+      // Generate a unique idempotency key to prevent double charge / duplicate bills
+      const idempotencyKey = window.crypto?.randomUUID ? window.crypto.randomUUID() : (Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
 
       const billPayload = {
         branchId: selectedBranchId,
@@ -228,6 +254,7 @@ export default function Billing() {
         totalAmount,
         paymentMethod,
         status: 'Paid',
+        idempotencyKey,
         items: itemsDto
       };
 
@@ -257,10 +284,23 @@ export default function Billing() {
       };
 
       setGeneratedBill(mappedBill);
-      setCart([]); // Clear cart
+      setCart([]); // Clear cart (automatically clears local storage)
       showToast("Invoice processed successfully!", "success");
+
+      // Send invoice via WhatsApp if customer has a valid phone number
+      if (activeCustomer.phone && activeCustomer.phone !== 'N/A') {
+        try {
+          await whatsAppService.sendDocument(created.id, activeCustomer.phone, `Invoice ${created.billNumber}`);
+          showToast(`Invoice sent to ${activeCustomer.phone} via WhatsApp`, "success");
+        } catch (waErr: any) {
+          console.error("WhatsApp send failed:", waErr);
+          showToast("Bill generated, but WhatsApp transmission failed: " + (waErr.response?.data?.error || waErr.message), "warning");
+        }
+      }
     } catch (err: any) {
       showToast("Error compiling bill: " + (err.response?.data || err.message), "error");
+    } finally {
+      setIsCheckingOut(false);
     }
   };
 
@@ -294,14 +334,14 @@ export default function Billing() {
         const allowedNames = selectedCategoryIds.flatMap(id => getDescendantNames(id, dbCategories));
         matchesCategory = allowedNames.includes(s.category.toLowerCase());
       }
-      const matchesQuery = s.name.toLowerCase().includes(filterQuery.toLowerCase()) || 
-                           s.category.toLowerCase().includes(filterQuery.toLowerCase()) ||
-                           s.sku.toLowerCase().includes(filterQuery.toLowerCase());
+      const matchesQuery = s.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
+        s.category.toLowerCase().includes(filterQuery.toLowerCase()) ||
+        s.sku.toLowerCase().includes(filterQuery.toLowerCase());
       return matchesCategory && matchesQuery;
     });
 
   // Filter clients/customers list
-  const filteredCustomers = customers.filter(c => 
+  const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
     c.phone.includes(clientSearchQuery)
   );
@@ -319,20 +359,20 @@ export default function Billing() {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full items-start">
       {/* Left Columns: Services list & Client search */}
       <div className="lg:col-span-8 flex flex-col gap-6 min-w-0">
-        
+
         {/* Customer Details Panel */}
         <section className="bg-white rounded-xl p-5 border border-[#e2e8f0]/80 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="font-display text-lg font-bold text-[#0b1c30]">Customer Details</h2>
             {isAddingCustomer ? (
-              <button 
+              <button
                 onClick={() => setIsAddingCustomer(false)}
                 className="text-xs font-semibold text-[#ba1a1a]"
               >
                 Cancel
               </button>
             ) : (
-              <button 
+              <button
                 id="open-customer-modal-btn"
                 onClick={() => setIsAddingCustomer(true)}
                 className="text-xs font-bold text-[#006f66] flex items-center gap-1"
@@ -344,7 +384,7 @@ export default function Billing() {
 
           <AnimatePresence mode="wait">
             {isAddingCustomer ? (
-              <motion.form 
+              <motion.form
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
@@ -354,29 +394,29 @@ export default function Billing() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-bold text-[#7c839b] uppercase tracking-wider block mb-1">Name</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       required
                       value={newCustName}
                       onChange={(e) => setNewCustName(e.target.value)}
-                      placeholder="e.g. John Doe" 
+                      placeholder="e.g. John Doe"
                       className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
                     />
                   </div>
                   <div>
                     <label className="text-[11px] font-bold text-[#7c839b] uppercase tracking-wider block mb-1">Phone</label>
-                    <input 
-                      type="tel" 
+                    <input
+                      type="tel"
                       required
                       value={newCustPhone}
                       onChange={(e) => setNewCustPhone(e.target.value)}
-                      placeholder="e.g. 9876543210" 
+                      placeholder="e.g. 9876543210"
                       className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded"
                     />
                   </div>
                 </div>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="bg-[#006a61] text-white px-4 py-1.5 rounded text-xs font-semibold hover:bg-opacity-90"
                 >
                   Save & Select
@@ -409,11 +449,10 @@ export default function Billing() {
                   id={`cust-chip-${cust.id}`}
                   onClick={() => setSelectedCustomerId(cust.id)}
                   type="button"
-                  className={`shrink-0 px-3 py-1.5 border rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                    isSelected 
-                      ? 'bg-[#86f2e4]/20 border-[#006a61] text-[#006f66] scale-[0.98]' 
+                  className={`shrink-0 px-3 py-1.5 border rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${isSelected
+                      ? 'bg-[#86f2e4]/20 border-[#006a61] text-[#006f66] scale-[0.98]'
                       : 'bg-white border-[#e2e8f0] text-[#45464d] hover:border-[#7c839b]'
-                  }`}
+                    }`}
                 >
                   {cust.isWalkIn ? <History size={12} /> : null}
                   <span>{cust.name} {cust.phone !== 'N/A' ? `(${cust.phone})` : ''}</span>
@@ -445,11 +484,10 @@ export default function Billing() {
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all select-none ${
-                selectedCategoryIds.length > 0 
-                  ? 'bg-[#006a61]/10 border-[#006a61] text-[#006f66]' 
+              className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all select-none ${selectedCategoryIds.length > 0
+                  ? 'bg-[#006a61]/10 border-[#006a61] text-[#006f66]'
                   : 'bg-[#eff4ff] border-transparent text-[#45464d] hover:bg-[#dce9ff]'
-              }`}
+                }`}
             >
               <span>Filter Categories</span>
               {selectedCategoryIds.length > 0 && (
@@ -461,18 +499,18 @@ export default function Billing() {
 
             {isFilterOpen && (
               <>
-                <div 
-                  className="fixed inset-0 z-40" 
+                <div
+                  className="fixed inset-0 z-40"
                   onClick={() => setIsFilterOpen(false)}
                 />
                 <div className="absolute top-9 left-0 z-50 w-72 max-h-[350px] overflow-y-auto bg-white border border-[#e2e8f0] rounded-xl shadow-lg p-3 space-y-2 mt-1">
                   <div className="flex justify-between items-center pb-2 border-b">
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Select Categories</span>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={() => {
                         setSelectedCategoryIds([]);
-                      }} 
+                      }}
                       className="text-[10px] font-bold text-red-500 hover:underline"
                     >
                       Clear All
@@ -521,20 +559,20 @@ export default function Billing() {
                 dbCategories
                   .filter(c => selectedCategoryIds.includes(c.id))
                   .map(c => (
-                    <span 
-                      key={c.id} 
+                    <span
+                      key={c.id}
                       className="shrink-0 flex items-center gap-1 px-2.5 py-1 bg-[#006a61]/5 border border-[#006a61]/25 text-[#006f66] text-[10px] font-bold rounded-md"
                     >
                       {c.name}
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => {
                           setSelectedCategoryIds(prev => {
                             const temp = new Set<number>(prev);
                             toggleCategoryCheck(c.id, false, dbCategories, temp);
                             return Array.from(temp);
                           });
-                        }} 
+                        }}
                         className="hover:text-red-500 font-sans font-bold"
                       >
                         ×
@@ -567,7 +605,7 @@ export default function Billing() {
                   <div className="absolute inset-0 bg-[#006a61]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                 </button>
               ))}
-              
+
               {filteredServices.length === 0 && (
                 <div className="col-span-full py-12 text-center">
                   <p className="text-xs text-[#7c839b] font-medium">No active services match the filters.</p>
@@ -604,8 +642,8 @@ export default function Billing() {
             {/* Selected items list */}
             <div className="space-y-2 overflow-y-auto max-h-[180px] pr-1">
               {cart.map(item => (
-                <div 
-                  key={item.serviceId} 
+                <div
+                  key={item.serviceId}
                   className="flex items-start justify-between p-2 bg-[#f8f9ff] border border-[#e2e8f0]/40 rounded-lg hover:border-[#006a61]/35 group"
                 >
                   <div className="flex-1 min-w-0 pr-2">
@@ -615,14 +653,14 @@ export default function Billing() {
                       <span className="text-[9px] font-semibold">x</span>
                       {/* Counter triggers adjustment */}
                       <div className="flex items-center bg-[#eff4ff] rounded border border-[#e2e8f0]">
-                        <button 
+                        <button
                           onClick={() => handleUpdateQty(item.serviceId, -1)}
                           className="px-1 hover:bg-[#c6c6cd]/20 rounded-l"
                         >
                           <Minus size={10} />
                         </button>
                         <span className="px-1.5 text-[10px] font-bold text-[#0b1c30] leading-none">{item.quantity}</span>
-                        <button 
+                        <button
                           onClick={() => handleUpdateQty(item.serviceId, 1)}
                           className="px-1 hover:bg-[#c6c6cd]/20 rounded-r"
                         >
@@ -634,7 +672,7 @@ export default function Billing() {
 
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className="text-xs font-bold text-[#0b1c30]">₹{item.lineTotal.toLocaleString()}</span>
-                    <button 
+                    <button
                       onClick={() => handleRemoveItem(item.serviceId)}
                       className="text-[#ba1a1a] opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
                     >
@@ -658,14 +696,14 @@ export default function Billing() {
             {/* Promo Code Coupon applied */}
             <div className="flex items-center gap-2">
               <Percent size={14} className="text-[#45464d] shrink-0" />
-              <input 
+              <input
                 type="text"
                 placeholder="Discount Code or %"
                 value={discountCode}
                 onChange={(e) => setDiscountCode(e.target.value)}
                 className="flex-1 min-w-0 py-1 px-2.5 bg-white border border-[#c6c6cd] rounded font-sans text-xs font-semibold placeholder-[#7c839b]/70 outline-none"
               />
-              <button 
+              <button
                 onClick={handleApplyPromo}
                 className="px-3 py-1 bg-[#eff4ff]/80 border border-[#c6c6cd] rounded text-xs font-bold hover:bg-[#dce9ff] shrink-0"
               >
@@ -704,37 +742,34 @@ export default function Billing() {
           <div>
             <h3 className="text-xs font-bold text-[#7c839b] uppercase tracking-wider block mb-2">Payment Method</h3>
             <div className="grid grid-cols-3 gap-2">
-              <button 
+              <button
                 onClick={() => setPaymentMethod('Cash')}
-                className={`flex flex-col items-center justify-center p-2 border-2 rounded-lg transition-all ${
-                  paymentMethod === 'Cash' 
-                    ? 'border-[#006a61] bg-[#006a61]/5 text-[#006a61]' 
+                className={`flex flex-col items-center justify-center p-2 border-2 rounded-lg transition-all ${paymentMethod === 'Cash'
+                    ? 'border-[#006a61] bg-[#006a61]/5 text-[#006a61]'
                     : 'border-[#e2e8f0] bg-white text-[#7c839b] hover:bg-[#eff4ff]'
-                }`}
+                  }`}
               >
                 <span className="text-lg mb-0.5">💵</span>
                 <span className="text-[10px] font-bold uppercase tracking-wider">Cash</span>
               </button>
 
-              <button 
+              <button
                 onClick={() => setPaymentMethod('UPI')}
-                className={`flex flex-col items-center justify-center p-2 border-2 rounded-lg transition-all ${
-                  paymentMethod === 'UPI' 
-                    ? 'border-[#006a61] bg-[#006a61]/5 text-[#006a61]' 
+                className={`flex flex-col items-center justify-center p-2 border-2 rounded-lg transition-all ${paymentMethod === 'UPI'
+                    ? 'border-[#006a61] bg-[#006a61]/5 text-[#006a61]'
                     : 'border-[#e2e8f0] bg-white text-[#7c839b] hover:bg-[#eff4ff]'
-                }`}
+                  }`}
               >
                 <span className="text-lg mb-0.5">📲</span>
                 <span className="text-[10px] font-bold uppercase tracking-wider">UPI</span>
               </button>
 
-              <button 
+              <button
                 onClick={() => setPaymentMethod('Card')}
-                className={`flex flex-col items-center justify-center p-2 border-2 rounded-lg transition-all ${
-                  paymentMethod === 'Card' 
-                    ? 'border-[#006a61] bg-[#006a61]/5 text-[#006a61]' 
+                className={`flex flex-col items-center justify-center p-2 border-2 rounded-lg transition-all ${paymentMethod === 'Card'
+                    ? 'border-[#006a61] bg-[#006a61]/5 text-[#006a61]'
                     : 'border-[#e2e8f0] bg-white text-[#7c839b] hover:bg-[#eff4ff]'
-                }`}
+                  }`}
               >
                 <span className="text-lg mb-0.5">💳</span>
                 <span className="text-[10px] font-bold uppercase tracking-wider">Card</span>
@@ -745,11 +780,16 @@ export default function Billing() {
           <button
             onClick={handleCheckout}
             id="checkout-submit-btn"
-            className="w-full py-3 bg-[#006a61] text-[#ffffff] rounded-lg font-display font-semibold hover:bg-opacity-95 transition-all flex items-center justify-center gap-2 shadow-sm relative overflow-hidden group text-sm"
+            disabled={isCheckingOut || cart.length === 0}
+            className="w-full py-3 bg-[#006a61] text-[#ffffff] rounded-lg font-display font-semibold hover:bg-opacity-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-sm relative overflow-hidden group text-sm"
           >
             <div className="absolute inset-0 bg-white/10 w-0 group-hover:w-full transition-all duration-300 ease-out"></div>
-            <Send size={16} />
-            <span>Generate &amp; WhatsApp</span>
+            {isCheckingOut ? (
+              <Loader2 className="animate-spin text-white" size={16} />
+            ) : (
+              <Send size={16} />
+            )}
+            <span>{isCheckingOut ? 'Compiling Invoices...' : 'Generate & WhatsApp'}</span>
           </button>
         </div>
       </aside>
@@ -758,7 +798,7 @@ export default function Billing() {
       <AnimatePresence>
         {generatedBill && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -769,7 +809,7 @@ export default function Billing() {
               </div>
               <h3 className="font-display text-lg font-black text-[#0b1c30]">Bill Compiled!</h3>
               <p className="text-xs text-[#7c839b] mt-1">Invoice {generatedBill.billNumber} has been generated successfully and queued for secure WhatsApp deliverability.</p>
-              
+
               <div className="bg-[#f8f9ff] border p-4 rounded-lg my-4 text-left space-y-1.5 font-sans">
                 <div className="flex justify-between text-xs text-[#45464d] font-bold">
                   <span>Client Name:</span>

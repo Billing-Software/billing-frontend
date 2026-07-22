@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Calculator, MessageCircle } from 'lucide-react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import MainLayout from '../layouts/MainLayout';
 import ProtectedRoute from './ProtectedRoute';
 import Dashboard from '../pages/Dashboard/Dashboard';
@@ -16,6 +16,9 @@ import Login from '../pages/Login/Login';
 import Invoices from '../pages/Invoices/Invoices';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import Onboarding from '../pages/Onboarding/Onboarding';
+import SuperAdminDashboard from '../pages/SuperAdmin/SuperAdminDashboard';
+import Branches from '../pages/Branches/Branches';
 
 interface AppRoutesProps {
   searchText: string;
@@ -82,7 +85,7 @@ export default function AppRoutes({
   };
 
   const handleQuickShare = () => {
-    const shareMessage = `SmartBill Pro Gateway for ${currentBranch} Branch is online: All cash registers are fully operational. Current revenue levels are green.`;
+    const shareMessage = `SmartBill Pro Gateway for ${currentBranch?.name || 'Default'} Branch is online: All cash registers are fully operational. Current revenue levels are green.`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(shareMessage);
       showToast("Access webhook message copied to workspace clipboard!", "success");
@@ -95,7 +98,24 @@ export default function AppRoutes({
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Login />} />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
+      <Route path="/autologin" element={<AutoLogin />} />
+      <Route 
+        path="/onboarding" 
+        element={
+          <ProtectedRoute>
+            <Onboarding />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/superadmin" 
+        element={
+          <ProtectedRoute>
+            {currentUser?.role === 'SuperAdmin' ? <SuperAdminDashboard /> : <Navigate to="/dashboard" replace />}
+          </ProtectedRoute>
+        } 
+      />
 
       {/* Protected routes */}
       <Route 
@@ -118,13 +138,17 @@ export default function AppRoutes({
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={
-          <Dashboard 
-            onNavigateToBilling={() => handleSetActiveTab('billing')}
-            onNavigateToStaff={() => handleSetActiveTab('staff')}
-            onNavigateToServices={() => handleSetActiveTab('services')}
-            currentBranch={currentBranch}
-          />
+         <Route path="dashboard" element={
+          currentUser?.role === 'SuperAdmin' ? (
+            <Navigate to="/superadmin" replace />
+          ) : (
+            <Dashboard 
+              onNavigateToBilling={() => handleSetActiveTab('billing')}
+              onNavigateToStaff={() => handleSetActiveTab('staff')}
+              onNavigateToServices={() => handleSetActiveTab('services')}
+              currentBranch={currentBranch}
+            />
+          )
         } />
         <Route path="billing" element={<Billing />} />
         <Route path="services" element={<Services />} />
@@ -132,14 +156,57 @@ export default function AppRoutes({
         <Route path="inventory" element={<Inventory />} />
         <Route path="invoices" element={<Invoices />} />
         <Route path="staff" element={currentUser?.role === 'Owner' ? <Staff /> : <Navigate to="/dashboard" replace />} />
+        <Route path="branches" element={currentUser?.role === 'Owner' ? <Branches /> : <Navigate to="/dashboard" replace />} />
         <Route path="settings" element={currentUser?.role === 'Owner' ? <Settings /> : <Navigate to="/dashboard" replace />} />
         <Route path="expenses" element={currentUser?.role === 'Owner' ? <Expenses /> : <Navigate to="/dashboard" replace />} />
         <Route path="help" element={<Help />} />
         
         {/* Redirect from root or invalid paths */}
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<Navigate to={currentUser?.role === 'SuperAdmin' ? "/superadmin" : "/dashboard"} replace />} />
+        <Route path="*" element={<Navigate to={currentUser?.role === 'SuperAdmin' ? "/superadmin" : "/dashboard"} replace />} />
       </Route>
     </Routes>
+  );
+}
+
+function AutoLogin() {
+  const [searchParams] = useSearchParams();
+  const { setCurrentUser } = useAuth();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const token = searchParams.get('token');
+    const username = searchParams.get('username');
+    const email = searchParams.get('email');
+    const role = searchParams.get('role');
+    const businessId = searchParams.get('businessId');
+    const businessName = searchParams.get('businessName');
+    const isNew = searchParams.get('new') === 'true';
+
+    if (token && username && email && role && businessId && businessName) {
+      const user = {
+        username,
+        email,
+        role,
+        businessId: parseInt(businessId, 10),
+        businessName,
+        token
+      };
+      if (isNew) {
+        localStorage.setItem('onboarding_pending', 'true');
+      }
+      setCurrentUser(user);
+      navigate('/dashboard', { replace: true });
+    } else {
+      navigate('/login', { replace: true });
+    }
+  }, [searchParams, setCurrentUser, navigate]);
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-slate-800">
+      <div className="animate-spin rounded-full h-10 w-10 border-4 border-[#006a61] border-t-transparent mb-4"></div>
+      <h3 className="font-semibold text-sm">Logging you in automatically...</h3>
+      <p className="text-[10px] text-slate-400 font-medium">Authenticating POS session securely.</p>
+    </div>
   );
 }

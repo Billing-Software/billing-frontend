@@ -35,6 +35,10 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('auth_data');
       window.dispatchEvent(new Event('auth_logout'));
+    } else if (error.response?.status === 402) {
+      localStorage.removeItem('auth_data');
+      window.location.hash = '#/login?expired=true';
+      window.dispatchEvent(new Event('auth_logout'));
     }
     return Promise.reject(error);
   }

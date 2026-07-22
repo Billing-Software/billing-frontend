@@ -14,13 +14,16 @@ import {
   FileText,
   DollarSign,
   TrendingUp,
-  Tag
+  Tag,
+  MessageSquare,
+  Loader2
 } from 'lucide-react';
 import { billService } from '../../services/bill.service';
 import { customerService } from '../../services/customer.service';
 import { staffService } from '../../services/staff.service';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
+import { whatsAppService } from '../../services/whatsapp.service';
 
 export default function Invoices() {
   const { currentUser } = useAuth();
@@ -46,6 +49,12 @@ export default function Invoices() {
   const [selectedBill, setSelectedBill] = useState<any | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState<boolean>(false);
   const [isFilterExpanded, setIsFilterExpanded] = useState<boolean>(false);
+
+  // WhatsApp Sending States
+  const [isSendingWa, setIsSendingWa] = useState<boolean>(false);
+  const [waPhone, setWaPhone] = useState<string>('');
+  const [waCaption, setWaCaption] = useState<string>('');
+  const [isWaPromptOpen, setIsWaPromptOpen] = useState<boolean>(false);
 
   const isOwner = currentUser?.role === 'Owner';
 
@@ -215,6 +224,29 @@ export default function Invoices() {
     `);
     printWindow.document.close();
     showToast('Sent to browser print spooler.', 'success');
+  };
+
+  const handleOpenWaPrompt = (bill: any) => {
+    setWaPhone(bill.customerPhone || '');
+    setWaCaption(`Invoice ${bill.billNumber}`);
+    setSelectedBill(bill);
+    setIsWaPromptOpen(true);
+  };
+
+  const handleSendWa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBill || !waPhone) return;
+
+    setIsSendingWa(true);
+    try {
+      await whatsAppService.sendDocument(selectedBill.id, waPhone, waCaption || undefined);
+      showToast(`Invoice successfully sent to ${waPhone} via WhatsApp!`, 'success');
+      setIsWaPromptOpen(false);
+    } catch (err: any) {
+      showToast('WhatsApp transmission failed: ' + (err.response?.data?.error || err.message), 'error');
+    } finally {
+      setIsSendingWa(false);
+    }
   };
 
   const filteredBills = bills.filter(b => {
@@ -480,6 +512,13 @@ export default function Invoices() {
                       >
                         <Printer size={14} />
                       </button>
+                      <button
+                        title="Send via WhatsApp"
+                        onClick={() => handleOpenWaPrompt(bill)}
+                        className="p-1.5 text-[#25d366] hover:bg-emerald-50 rounded transition-colors"
+                      >
+                        <MessageSquare size={14} />
+                      </button>
                       {isOwner && (
                         <button
                           title="Delete Permanently"
@@ -624,6 +663,16 @@ export default function Invoices() {
                   Close
                 </button>
                 <button
+                  onClick={() => {
+                    setIsDetailOpen(false);
+                    handleOpenWaPrompt(selectedBill);
+                  }}
+                  className="font-sans text-xs font-bold px-4 py-2 bg-[#25d366] text-white rounded-lg flex items-center gap-1.5 shadow-sm hover:bg-[#22c55e]"
+                >
+                  <MessageSquare size={14} />
+                  <span>Send WhatsApp</span>
+                </button>
+                <button
                   onClick={() => handlePrintReceipt(selectedBill)}
                   className="font-sans text-xs font-bold px-4 py-2 bg-[#006a61] text-white rounded-lg flex items-center gap-1.5 shadow-sm"
                 >
@@ -631,6 +680,94 @@ export default function Invoices() {
                   <span>Print Receipt</span>
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* WhatsApp Send Prompt Modal */}
+      <AnimatePresence>
+        {isWaPromptOpen && selectedBill && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsWaPromptOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+            ></motion.div>
+
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-sm bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-4 border-b flex justify-between items-center bg-[#eff4ff]/60">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="text-[#25d366]" size={20} />
+                  <span className="font-display font-black text-sm text-[#0b1c30]">Send via WhatsApp</span>
+                </div>
+                <button
+                  onClick={() => setIsWaPromptOpen(false)}
+                  className="p-1 text-[#7c839b] hover:text-[#0b1c30] rounded-full hover:bg-slate-200/50 transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSendWa} className="p-5 space-y-4 text-xs font-semibold text-[#45464d]">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#7c839b] uppercase mb-1">Recipient Phone Number</label>
+                  <input
+                    type="text"
+                    required
+                    value={waPhone}
+                    onChange={(e) => setWaPhone(e.target.value)}
+                    placeholder="e.g. +919876543210"
+                    className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
+                  />
+                  <p className="text-[10px] text-[#7c839b] font-medium mt-1">Include country code without spaces/special chars (e.g. +91...)</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#7c839b] uppercase mb-1">Caption (Optional)</label>
+                  <input
+                    type="text"
+                    value={waCaption}
+                    onChange={(e) => setWaCaption(e.target.value)}
+                    placeholder="e.g. Invoice INV-12345"
+                    className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setIsWaPromptOpen(false)}
+                    className="px-4 py-2 border rounded-lg bg-white text-[#45464d] hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSendingWa}
+                    className="px-4 py-2 bg-[#25d366] text-white rounded-lg flex items-center gap-1.5 font-bold hover:bg-[#22c55e] disabled:opacity-50"
+                  >
+                    {isSendingWa ? (
+                      <>
+                        <Loader2 className="animate-spin" size={14} />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare size={14} />
+                        <span>Send Invoice</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

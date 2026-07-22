@@ -6,3 +6,4 @@ export * from './billing.types';
 export * from './settings.types';
 export * from './user.types';
 export * from './auth.types';
+export * from './branch.types';

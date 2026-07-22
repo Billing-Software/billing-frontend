@@ -11,10 +11,15 @@ import {
   Trash2,
   Plus,
   Loader2,
-  Tag
+  Tag,
+  Link,
+  Unlink,
+  Phone,
+  Info
 } from 'lucide-react';
 import { businessService } from '../../services/business.service';
 import { settingsService } from '../../services/settings.service';
+import { whatsAppService, WhatsAppAccountStatus } from '../../services/whatsapp.service';
 import { categoryService, Category } from '../../services/category.service';
 import { apiClient } from '../../services/api.client';
 import { useToast } from '../../hooks/useToast';
@@ -23,7 +28,8 @@ import { authService } from '../../services/auth.service';
 export default function Settings() {
   const { showToast } = useToast();
   const [profile, setProfile] = useState<any>(null);
-  const [whatsApp, setWhatsApp] = useState<any>(null);
+  const [waStatus, setWaStatus] = useState<WhatsAppAccountStatus | null>(null);
+  const [isWaConnecting, setIsWaConnecting] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Password reset local states
@@ -50,11 +56,7 @@ export default function Settings() {
   const [showLogoOnReceipt, setShowLogoOnReceipt] = useState<boolean>(true);
   const [receiptTemplateType, setReceiptTemplateType] = useState<string>('Thermal80mm');
 
-  // Local WhatsApp states
-  const [waApiKey, setWaApiKey] = useState<string>('');
-  const [waConnected, setWaConnected] = useState<boolean>(false);
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [newTemplateName, setNewTemplateName] = useState<string>('');
+  // WhatsApp Cloud API states are now in waStatus
 
   // Category states
   const [categories, setCategories] = useState<Category[]>([]);
@@ -65,9 +67,9 @@ export default function Settings() {
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const [profileData, waData, categoryData] = await Promise.all([
+      const [profileData, waStatusData, categoryData] = await Promise.all([
         businessService.getProfile(),
-        settingsService.getWhatsAppSettings(),
+        whatsAppService.getStatus(),
         categoryService.getAll()
       ]);
       
@@ -90,10 +92,7 @@ export default function Settings() {
       setShowLogoOnReceipt(profileData.showLogoOnReceipt ?? true);
       setReceiptTemplateType(profileData.receiptTemplateType || 'Thermal80mm');
 
-      setWhatsApp(waData);
-      setWaApiKey(waData.apiKey || '');
-      setWaConnected(waData.isConnected || false);
-      setTemplates(waData.templates || []);
+      setWaStatus(waStatusData);
       setCategories(categoryData || []);
     } catch (e) {
       console.error('Error fetching settings', e);
@@ -192,44 +191,39 @@ export default function Settings() {
     }
   };
 
-  const handleSaveWhatsApp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConnectWhatsApp = async () => {
+    setIsWaConnecting(true);
     try {
-      const updated = await settingsService.updateWhatsAppSettings({
-        apiKey: waApiKey,
-        isConnected: waConnected
-      });
-      setWhatsApp(updated);
-      setWaApiKey(updated.apiKey || '');
-      setWaConnected(updated.isConnected || false);
-      showToast("WhatsApp billing gateway webhook parameters updated!", "success");
+      // In production, this would open Meta Embedded Signup in a popup/redirect
+      // and receive the authorization code via callback.
+      // For now, prompt for the code manually.
+      const code = prompt(
+        'Enter the Meta authorization code from Embedded Signup:\n\n' +
+        'To get this code, complete the Facebook Login flow at:\n' +
+        'https://www.facebook.com/dialog/oauth?client_id={YOUR_APP_ID}&redirect_uri={YOUR_REDIRECT}&response_type=code&scope=whatsapp_business_management,whatsapp_business_messaging'
+      );
+      if (!code) {
+        setIsWaConnecting(false);
+        return;
+      }
+      const status = await whatsAppService.connect(code);
+      setWaStatus(status);
+      showToast('WhatsApp Business connected successfully!', 'success');
     } catch (err: any) {
-      showToast("Error saving WhatsApp settings: " + (err.response?.data || err.message), "error");
+      showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
+    } finally {
+      setIsWaConnecting(false);
     }
   };
 
-  const handleAddTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTemplateName) return;
+  const handleDisconnectWhatsApp = async () => {
+    if (!confirm('Are you sure you want to disconnect your WhatsApp Business account? You will no longer be able to send invoices via WhatsApp.')) return;
     try {
-      const added = await settingsService.addWhatsAppTemplate({
-        templateName: newTemplateName
-      });
-      setTemplates(prev => [...prev, added]);
-      setNewTemplateName('');
-      showToast("New message template registered!", "success");
+      await whatsAppService.disconnect();
+      setWaStatus({ id: 0, status: 'NotConnected' });
+      showToast('WhatsApp disconnected.', 'success');
     } catch (err: any) {
-      showToast("Error adding template: " + (err.response?.data || err.message), "error");
-    }
-  };
-
-  const handleDeleteTemplate = async (id: number) => {
-    try {
-      await settingsService.deleteWhatsAppTemplate(id);
-      setTemplates(prev => prev.filter(t => t.id !== id));
-      showToast("Template deleted successfully.", "success");
-    } catch (err: any) {
-      showToast("Error deleting template: " + (err.response?.data || err.message), "error");
+      showToast('Disconnect failed: ' + (err.response?.data?.error || err.message), 'error');
     }
   };
 
@@ -577,109 +571,90 @@ export default function Settings() {
           </form>
         </section>
 
-        {/* WhatsApp Notification Webhook Settings */}
+        {/* WhatsApp Cloud API Integration */}
         <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm overflow-hidden">
           <div className="p-5 border-b bg-[#f8f9ff] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <MessageSquare size={18} className="text-[#006f66]" />
               <div>
-                <h3 className="font-display font-bold text-sm text-[#0b1c30]">WhatsApp Broker Webhook</h3>
-                <p className="font-sans text-[10px] text-[#7c839b] font-medium uppercase mt-0.5">Send instant invoices, alerts and updates to clients' WhatsApp feeds.</p>
+                <h3 className="font-display font-bold text-sm text-[#0b1c30]">WhatsApp Cloud API</h3>
+                <p className="font-sans text-[10px] text-[#7c839b] font-medium uppercase mt-0.5">Send invoices & notifications directly via your WhatsApp Business account.</p>
               </div>
             </div>
 
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${waConnected ? 'bg-[#e2f3eb] text-[#1e8e3e]' : 'bg-[#ffdad6] text-[#ba1a1a]'}`}>
-              {waConnected ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-              <span>{waConnected ? 'Connected (Live)' : 'Disconnected Parameters'}</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${waStatus?.status === 'Connected' ? 'bg-[#e2f3eb] text-[#1e8e3e]' : 'bg-[#ffdad6] text-[#ba1a1a]'}`}>
+              {waStatus?.status === 'Connected' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+              <span>{waStatus?.status === 'Connected' ? 'Connected' : 'Not Connected'}</span>
             </div>
           </div>
 
-          <form onSubmit={handleSaveWhatsApp} className="p-5 space-y-4">
-            <div>
-              <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">WhatsApp Cloud Private Secret Key Token</label>
-              <input 
-                type="password" 
-                value={waApiKey}
-                onChange={(e) => setWaApiKey(e.target.value)}
-                placeholder="sk_test_..."
-                className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
-              />
-              <p className="text-[10px] text-[#7c839b] font-semibold mt-1 leading-normal">
-                Credentials are encrypted and safely stored server-side. Private keys never leak to consumer browser windows.
+          <div className="p-5 space-y-5">
+            {/* Connection Status Card */}
+            <div className={`rounded-xl p-6 text-center ${waStatus?.status === 'Connected' ? 'bg-[#f0fdf4] border border-[#bbf7d0]' : 'bg-[#f9fafb] border border-[#e5e7eb]'}`}>
+              <div className={`w-14 h-14 mx-auto rounded-2xl flex items-center justify-center mb-3 ${waStatus?.status === 'Connected' ? 'bg-[#25d366]/15' : 'bg-[#6b7280]/10'}`}>
+                {waStatus?.status === 'Connected'
+                  ? <CheckCircle2 size={28} className="text-[#25d366]" />
+                  : <Unlink size={28} className="text-[#6b7280]" />
+                }
+              </div>
+              <h4 className={`font-display font-bold text-lg ${waStatus?.status === 'Connected' ? 'text-[#16a34a]' : 'text-[#6b7280]'}`}>
+                {waStatus?.status === 'Connected' ? 'Connected' : 'Not Connected'}
+              </h4>
+              <p className="text-xs text-[#6b7280] mt-1 leading-relaxed">
+                {waStatus?.status === 'Connected'
+                  ? 'WhatsApp Business API is active. You can send invoices directly to customers.'
+                  : 'Connect your WhatsApp Business account via Meta Embedded Signup to start sending invoices.'
+                }
               </p>
-            </div>
 
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setWaConnected(prev => !prev)}
-                className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${
-                  waConnected 
-                    ? 'bg-[#ba1a1a] text-white hover:bg-opacity-90' 
-                    : 'bg-[#1e8e3e] text-white hover:bg-opacity-90'
-                }`}
-              >
-                {waConnected ? 'Deregister Webhook' : 'Integrate Gateway Node'}
-              </button>
-            </div>
-
-            <div className="border-t border-[#e2e8f0]/40 pt-4 flex justify-end">
-              <button 
-                type="submit"
-                className="bg-[#006a61] text-white text-xs font-semibold px-4.5 py-2 rounded-lg flex items-center gap-1.5 hover:bg-opacity-95"
-              >
-                <Save size={13} />
-                <span>Save Router Settings</span>
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {/* WhatsApp Templates Panel */}
-        <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm overflow-hidden mt-6">
-          <div className="p-5 border-b bg-[#f8f9ff] flex items-center gap-2.5">
-            <MessageSquare size={18} className="text-[#006f66]" />
-            <div>
-              <h3 className="font-display font-bold text-sm text-[#0b1c30]">WhatsApp Invoicing Templates</h3>
-              <p className="font-sans text-[10px] text-[#7c839b] font-medium uppercase mt-0.5">Manage approved business templates for notifications and alerts.</p>
-            </div>
-          </div>
-          
-          <div className="p-5 space-y-4">
-            <form onSubmit={handleAddTemplate} className="flex gap-2">
-              <input 
-                type="text"
-                value={newTemplateName}
-                onChange={(e) => setNewTemplateName(e.target.value)}
-                placeholder="Template Name (e.g. invoice_notification_en)"
-                className="flex-1 text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
-                required
-              />
-              <button 
-                type="submit"
-                className="bg-[#006a61] text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1 hover:bg-opacity-95"
-              >
-                <Plus size={14} /> Add Template
-              </button>
-            </form>
-
-            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-              {templates.length > 0 ? (
-                templates.map((t) => (
-                  <div key={t.id} className="flex justify-between items-center p-2.5 bg-[#f8f9ff] border border-[#e2e8f0]/50 rounded-lg hover:border-[#006a61]/35">
-                    <span className="text-xs font-semibold text-[#0b1c30]">{t.templateName}</span>
-                    <button 
-                      type="button"
-                      onClick={() => handleDeleteTemplate(t.id)}
-                      className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/50 rounded transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-[#7c839b] text-center py-6 font-semibold">No custom templates registered yet.</p>
+              {waStatus?.status === 'Connected' && waStatus?.displayPhoneNumber && (
+                <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#e5e7eb]">
+                  <Phone size={14} className="text-[#25d366]" />
+                  <span className="text-sm font-semibold text-[#111827]">{waStatus.displayPhoneNumber}</span>
+                </div>
               )}
+
+              {waStatus?.status === 'Connected' && waStatus?.wabaId && (
+                <p className="text-[10px] text-[#9ca3af] mt-2">WABA: {waStatus.wabaId}</p>
+              )}
+            </div>
+
+            {/* Connect / Disconnect Button */}
+            <div className="flex justify-center">
+              {waStatus?.status === 'Connected' ? (
+                <button
+                  type="button"
+                  onClick={handleDisconnectWhatsApp}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold border border-[#fca5a5] text-[#dc2626] hover:bg-[#fef2f2] transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  <Unlink size={14} />
+                  Disconnect WhatsApp
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConnectWhatsApp}
+                  disabled={isWaConnecting}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold bg-[#25d366] text-white hover:bg-[#22c55e] transition-colors flex items-center gap-2 disabled:opacity-60 cursor-pointer"
+                >
+                  {isWaConnecting ? <Loader2 size={14} className="animate-spin" /> : <Link size={14} />}
+                  {isWaConnecting ? 'Connecting...' : 'Connect WhatsApp'}
+                </button>
+              )}
+            </div>
+
+            {/* Info Box */}
+            <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-xl p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Info size={14} className="text-[#0284c7]" />
+                <span className="text-xs font-bold text-[#0284c7]">How it works</span>
+              </div>
+              <ul className="text-[11px] text-[#374151] space-y-1.5 leading-relaxed ml-5">
+                <li>• Messages are sent securely through your own WhatsApp Business account</li>
+                <li>• Send invoice PDFs directly to your customers' WhatsApp</li>
+                <li>• Get real-time delivery and read receipts for every message</li>
+                <li>• Access tokens are AES-256 encrypted and never exposed to the browser</li>
+              </ul>
             </div>
           </div>
         </section>

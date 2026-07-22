@@ -7,4 +7,6 @@ export interface StaffMember {
   totalBills: number;
   revenueGen: number;
   status: 'Active' | 'Inactive';
+  branchId?: number;
+  branchName?: string;
 }

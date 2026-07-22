@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import { User } from '../types';
+import { User, Branch } from '../types';
 import logoText from '../assets/BillCom-text.svg';
 
 interface MainLayoutProps {
@@ -25,8 +25,8 @@ interface MainLayoutProps {
   setActiveTab: (tab: string) => void;
   onLogout: () => void;
   currentUser: User | null;
-  currentBranch: 'Main' | 'Downtown';
-  setCurrentBranch: (branch: 'Main' | 'Downtown') => void;
+  currentBranch: Branch | null;
+  setCurrentBranch: (branch: Branch | null) => void;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (isOpen: boolean) => void;
   searchText: string;
@@ -142,6 +142,7 @@ export default function MainLayout({
                     { id: 'services', label: 'Services', icon: Sparkles },
                     { id: 'inventory', label: 'Inventory', icon: Boxes },
                     ...(currentUser?.role === 'Owner' ? [
+                      { id: 'branches', label: 'Branches', icon: Building2 },
                       { id: 'staff', label: 'Staff', icon: SquareUser },
                       { id: 'settings', label: 'Settings', icon: Settings },
                     ] : [])

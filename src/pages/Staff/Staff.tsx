@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, Trash2, Edit2, Award, Loader2 } from 'lucide-react';
-import { StaffMember } from '../../types';
+import { Search, Plus, Trash2, Edit2, Award, Loader2, Building2 } from 'lucide-react';
+import { StaffMember, Branch } from '../../types';
 import { staffService } from '../../services/staff.service';
+import { branchService } from '../../services/branch.service';
 import { billService } from '../../services/bill.service';
+import { businessService } from '../../services/business.service';
 import { useToast } from '../../hooks/useToast';
 
 export default function Staff() {
   const { showToast } = useToast();
+  
+  // Scoped States
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [businessProfile, setBusinessProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -22,6 +28,7 @@ export default function Staff() {
   const [role, setRole] = useState<'Manager' | 'Staff' | 'Cashier'>('Staff');
   const [status, setStatus] = useState<'Active' | 'Inactive'>('Active');
   const [password, setPassword] = useState<string>('');
+  const [branchId, setBranchId] = useState<number | ''>('');
 
   const [expandedStaffId, setExpandedStaffId] = useState<number | null>(null);
   const [allBills, setAllBills] = useState<any[]>([]);
@@ -44,12 +51,16 @@ export default function Staff() {
     }
   };
 
-  const fetchStaff = async () => {
+  const fetchInitialData = async () => {
     try {
       setIsLoading(true);
-      const data = await staffService.getAll();
       
-      // Map backend revenueGenerated to UI's revenueGen property
+      // Load business details for limits tracker
+      const profile = await businessService.getProfile();
+      setBusinessProfile(profile);
+
+      // Load active staff members
+      const data = await staffService.getAll();
       const mapped = data.map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -58,19 +69,45 @@ export default function Staff() {
         role: item.role,
         totalBills: item.totalBills,
         revenueGen: item.revenueGenerated ?? 0,
-        status: item.status
+        status: item.status,
+        branchId: item.branchId,
+        branchName: item.branchName
       }));
       setStaff(mapped);
+
+      // Load active branches list
+      const branchesList = await branchService.getAll();
+      setBranches(branchesList);
     } catch (e) {
-      console.error('Error fetching staff list', e);
+      console.error('Error fetching initial data', e);
+      showToast('Error syncing payroll and branch data.', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStaff();
+    fetchInitialData();
   }, []);
+
+  const handleOpenCreate = () => {
+    if (businessProfile) {
+      const limit = businessProfile.allowedStaff;
+      if (limit !== -1 && staff.length >= limit) {
+        showToast(`Subscription Limit Reached: Your current plan allows a maximum of ${limit} staff profiles. Please upgrade your subscription plan.`, 'warning');
+        return;
+      }
+    }
+    setEditingStaff(null);
+    setName('');
+    setEmpCode('');
+    setContact('');
+    setRole('Staff');
+    setStatus('Active');
+    setPassword('');
+    setBranchId('');
+    setIsFormOpen(true);
+  };
 
   const handleSaveStaff = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +121,8 @@ export default function Staff() {
           contact,
           role,
           status,
-          password: password.trim() !== '' ? password : null
+          password: password.trim() !== '' ? password : null,
+          branchId: branchId || null
         });
         showToast("Staff access credentials updated!", "success");
       } else {
@@ -98,7 +136,8 @@ export default function Staff() {
           contact,
           role,
           status,
-          password
+          password,
+          branchId: branchId || null
         });
         showToast("Staff profile registered successfully!", "success");
       }
@@ -111,9 +150,10 @@ export default function Staff() {
       setRole('Staff');
       setStatus('Active');
       setPassword('');
-      fetchStaff();
+      setBranchId('');
+      await fetchInitialData();
     } catch (err: any) {
-      showToast("Error saving staff member: " + (err.response?.data || err.message), "error");
+      showToast("Error saving staff member: " + (err.response?.data?.message || err.message), "error");
     }
   };
 
@@ -124,6 +164,7 @@ export default function Staff() {
     setContact(member.contact);
     setRole(member.role);
     setStatus(member.status);
+    setBranchId(member.branchId || '');
     setPassword('');
     setIsFormOpen(true);
   };
@@ -132,47 +173,88 @@ export default function Staff() {
     try {
       await staffService.delete(id);
       showToast("Staff access revoked successfully.", "success");
-      fetchStaff();
+      await fetchInitialData();
     } catch (err: any) {
-      showToast("Error deleting staff member: " + (err.response?.data || err.message), "error");
+      showToast("Error deleting staff member: " + (err.response?.data?.message || err.message), "error");
     }
   };
 
   const filteredStaff = staff.filter(member => 
     member.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     member.empCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    member.role.toLowerCase().includes(searchQuery.toLowerCase())
+    member.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (member.branchName && member.branchName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const getPlanName = (planId: number) => {
+    switch (planId) {
+      case 1: return 'Starter Plan';
+      case 2: return 'Professional Plan';
+      case 3: return 'Enterprise Plan';
+      default: return 'Custom Plan';
+    }
+  };
+
+  const allowedStaffLimit = businessProfile?.allowedStaff ?? 2;
+  const isStaffLimitReached = allowedStaffLimit !== -1 && staff.length >= allowedStaffLimit;
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-6"
+      className="space-y-6 text-left"
     >
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="font-display text-2xl font-bold text-[#0b1c30]">Staff Directory</h2>
-          <p className="font-sans text-xs text-[#7c839b] font-semibold uppercase tracking-wider mt-1">Configure staff authorization codes, security roles, and audits.</p>
+          <p className="font-sans text-xs text-[#7c839b] font-semibold uppercase tracking-wider mt-1">
+            Configure staff authorization codes, branch assignments, and system access.
+          </p>
         </div>
         <button
-          onClick={() => {
-            setEditingStaff(null);
-            setName('');
-            setEmpCode('');
-            setContact('');
-            setRole('Staff');
-            setStatus('Active');
-            setPassword('');
-            setIsFormOpen(true);
-          }}
-          className="bg-[#006a61] text-white text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm hover:bg-opacity-95 cursor-pointer"
+          onClick={handleOpenCreate}
+          disabled={isStaffLimitReached}
+          className="bg-[#006a61] hover:bg-[#004d47] disabled:bg-slate-300 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:cursor-not-allowed cursor-pointer shrink-0"
         >
           <Plus size={15} />
           <span>Register Staff Member</span>
         </button>
       </div>
+
+      {/* Subscription Limit Overview Card */}
+      {businessProfile && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <h3 className="font-display text-base font-bold text-slate-800">
+              Subscription Context: <span className="text-[#006a61]">{getPlanName(businessProfile.activePlanId)}</span>
+            </h3>
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+              Allowed Staff Profiles: {allowedStaffLimit === -1 ? 'Unlimited' : `${staff.length} of ${allowedStaffLimit} users registered`}
+            </p>
+            {allowedStaffLimit !== -1 && (
+              <div className="w-64 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-500 rounded ${isStaffLimitReached ? 'bg-amber-500' : 'bg-[#006a61]'}`} 
+                  style={{ width: `${Math.min(100, (staff.length / allowedStaffLimit) * 100)}%` }}
+                ></div>
+              </div>
+            )}
+          </div>
+
+          {isStaffLimitReached && (
+            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-start gap-3 max-w-md">
+              <Building2 className="text-amber-500 shrink-0 mt-0.5" size={16} />
+              <div className="text-left space-y-1">
+                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider">Staff Limit Reached</h4>
+                <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
+                  Your store is currently utilizing all staff slots allowed under the {getPlanName(businessProfile.activePlanId)}. To unlock more slots, upgrade your subscription plan via superadmin configuration.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Interactive Form Panel */}
       <AnimatePresence>
@@ -263,9 +345,21 @@ export default function Staff() {
                 </select>
               </div>
 
+              <div>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Assigned Branch Outlet</label>
+                <select 
+                  value={branchId} 
+                  onChange={(e) => setBranchId(e.target.value ? parseInt(e.target.value, 10) : '')}
+                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
+                >
+                  <option value="">Main Branch</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
 
-
-              <div className="col-span-full flex gap-2 justify-end">
+              <div className="col-span-full flex gap-2 justify-end pt-2">
                 <button
                   type="button"
                   onClick={() => setIsFormOpen(false)}
@@ -294,7 +388,7 @@ export default function Staff() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Audit team directory by full legal names, employee code tags, or security role status..."
+            placeholder="Search team directory by name, code, role, or branch outlet..."
             className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#c6c6cd] rounded-lg font-sans text-xs font-semibold outline-none focus:border-[#006a61]"
           />
         </div>
@@ -335,12 +429,18 @@ export default function Staff() {
 
                 {/* Central Bio info */}
                 <h3 className="font-display font-bold text-sm text-[#0b1c30] leading-snug">{member.name}</h3>
-                <p className="font-mono text-[10px] text-[#7c839b] font-semibold uppercase mt-0.5">{member.empCode}</p>
-                <p className="font-sans text-xs text-[#45464d] truncate mt-1">{member.contact}</p>
-
+                
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <p className="font-mono text-[9px] text-[#7c839b] font-semibold uppercase">{member.empCode}</p>
+                  <span className="px-1.5 py-0.5 bg-slate-100 border border-slate-200/50 text-slate-500 rounded text-[8px] font-bold uppercase tracking-wider flex items-center gap-0.5">
+                    📍 {member.branchName || 'Main Branch'}
+                  </span>
+                </div>
+                
+                <p className="font-sans text-xs text-[#45464d] truncate mt-2">{member.contact}</p>
 
                 {/* Mini analytics dividers */}
-                <div className="grid grid-cols-2 gap-2 border-t border-[#e2e8f0]/65 mt-4 pt-4">
+                <div className="grid grid-cols-2 gap-2 border-t border-[#e2e8f0]/65 mt-4 pt-4 text-left">
                   <div>
                     <p className="text-[9px] font-bold text-[#7c839b] uppercase">Bills Generated</p>
                     <p className="text-xs font-bold font-display text-[#0b1c30] flex items-center gap-1 mt-0.5">

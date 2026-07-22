@@ -22,6 +22,8 @@ import { authService } from '../../../services/auth.service';
 import { apiClient } from '../../../services/api.client';
 import logo from '../../../assets/BillCom-full.svg';
 
+const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || 'http://localhost:5173';
+
 interface AuthViewProps {
   onLoginSuccess: (user: User) => void;
 }
@@ -29,7 +31,7 @@ interface AuthViewProps {
 export default function AuthView({ onLoginSuccess }: AuthViewProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const isLoginMode = location.pathname !== '/register';
+  const isLoginMode = true;
   
   // Login / Common credentials
   const [loginEmail, setLoginEmail] = useState<string>('');
@@ -73,6 +75,15 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorText, setErrorText] = useState<string>('');
+
+  React.useEffect(() => {
+    const hashParts = window.location.hash.split('?');
+    const searchString = hashParts.length > 1 ? hashParts[1] : window.location.search;
+    const params = new URLSearchParams(searchString);
+    if (params.get('expired') === 'true') {
+      setErrorText('Your store subscription has expired or payment was cancelled. Please complete payment to resume access.');
+    }
+  }, [location]);
 
   const validateStep = (currentStep: number): boolean => {
     setErrorText('');
@@ -213,6 +224,11 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
       if (isLoginMode) {
         const bId = isStaff && businessIdInput ? parseInt(businessIdInput) : undefined;
         const user = await authService.login(loginEmail, password, bId);
+        if (user.onboardingPending) {
+          localStorage.setItem('onboarding_pending', 'true');
+        } else {
+          localStorage.removeItem('onboarding_pending');
+        }
         onLoginSuccess(user);
         navigate('/dashboard', { replace: true });
       } else {
@@ -242,6 +258,11 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
           ...user,
           avatarUrl: avatarUrl.trim() || logoUrl.trim() || undefined
         };
+        if (user.onboardingPending) {
+          localStorage.setItem('onboarding_pending', 'true');
+        } else {
+          localStorage.removeItem('onboarding_pending');
+        }
         onLoginSuccess(userWithAvatar);
         navigate('/dashboard', { replace: true });
       }
@@ -264,26 +285,11 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
       {/* Form panel Card */}
       <div className="bg-white rounded-2xl border border-[#e2e8f0] shadow-md p-6 relative overflow-hidden transition-all duration-300">
         
-        {/* Toggle Mode Tab */}
-        <div className="flex border-b border-[#e2e8f0] mb-6">
-          <button
-            type="button"
-            onClick={() => { navigate('/login'); setStep(1); setErrorText(''); setAuthMode('login'); }}
-            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
-              isLoginMode ? 'border-[#006a61] text-[#006a61]' : 'border-transparent text-[#7c839b] hover:text-[#0b1c30]'
-            }`}
-          >
-            Workspace Login
-          </button>
-          <button
-            type="button"
-            onClick={() => { navigate('/register'); setStep(1); setErrorText(''); setAuthMode('login'); }}
-            className={`flex-1 pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
-              !isLoginMode ? 'border-[#006a61] text-[#006a61]' : 'border-transparent text-[#7c839b] hover:text-[#0b1c30]'
-            }`}
-          >
-            Create Business Account
-          </button>
+        {/* Dynamic header label instead of registration tab switcher */}
+        <div className="border-b border-[#e2e8f0] pb-3 mb-6">
+          <h2 className="text-xs font-bold text-[#006a61] uppercase tracking-wider text-center">
+            Sign In to your workspace
+          </h2>
         </div>
 
         {/* Wizard Progress Stepper (Only in Signup Mode) */}
@@ -858,86 +864,100 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
             </motion.div>
           )}
 
-          {/* CONTROL NAVIGATION BUTTONS */}
-          <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-            {authMode !== 'login' ? (
-              <button 
-                type="button"
-                onClick={() => { setAuthMode('login'); setErrorText(''); }}
-                className="px-4 py-2.5 border border-[#c6c6cd] text-[#45464d] font-display text-xs font-bold rounded-lg hover:bg-[#f8f9ff] active:scale-98 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <ArrowLeft size={13} />
-                <span>Back to Login</span>
-              </button>
-            ) : (!isLoginMode && step > 1) ? (
-              <button 
-                type="button"
-                onClick={handlePrevStep}
-                className="px-4 py-2.5 border border-[#c6c6cd] text-[#45464d] font-display text-xs font-bold rounded-lg hover:bg-[#f8f9ff] active:scale-98 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <ArrowLeft size={13} />
-                <span>Back</span>
-              </button>
-            ) : null}
+          {/* CONTROL NAVIGATION BUTTONS WRAPPER */}
+          <div className="space-y-3.5 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row gap-3">
+              {authMode !== 'login' ? (
+                <button 
+                  type="button"
+                  onClick={() => { setAuthMode('login'); setErrorText(''); }}
+                  className="px-4 py-2.5 border border-[#c6c6cd] text-[#45464d] font-display text-xs font-bold rounded-lg hover:bg-[#f8f9ff] active:scale-98 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowLeft size={13} />
+                  <span>Back to Login</span>
+                </button>
+              ) : (!isLoginMode && step > 1) ? (
+                <button 
+                  type="button"
+                  onClick={handlePrevStep}
+                  className="px-4 py-2.5 border border-[#c6c6cd] text-[#45464d] font-display text-xs font-bold rounded-lg hover:bg-[#f8f9ff] active:scale-98 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowLeft size={13} />
+                  <span>Back</span>
+                </button>
+              ) : null}
 
-            <button 
-              type="submit"
-              disabled={isLoading}
-              className="flex-1 py-2.5 bg-[#006a61] text-white font-display text-xs font-bold rounded-lg hover:bg-opacity-95 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-[#006a61]/10 cursor-pointer"
-            >
-              {isLoading ? (
-                <>
-                  <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin"></span>
-                  <span>Processing...</span>
-                </>
-              ) : authMode === 'forgot' ? (
-                <>
-                  <span>Request Reset Code</span>
-                  <ArrowRight size={13} />
-                </>
-              ) : authMode === 'reset' ? (
-                <>
-                  <span>Confirm Password Reset</span>
-                  <ArrowRight size={13} />
-                </>
-              ) : isLoginMode ? (
-                <>
-                  <span>Sign In To Workspace</span>
-                  <ArrowRight size={13} />
-                </>
-              ) : step < 4 ? (
-                <>
-                  <span>Continue Step {step + 1}</span>
-                  <ArrowRight size={13} />
-                </>
-              ) : (
-                <>
-                  <span>Complete Setup &amp; Launch</span>
-                  <ArrowRight size={13} />
-                </>
-              )}
-            </button>
+              <button 
+                type="submit"
+                disabled={isLoading}
+                className="flex-1 py-2.5 bg-[#006a61] text-white font-display text-xs font-bold rounded-lg hover:bg-opacity-95 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-[#006a61]/10 cursor-pointer"
+              >
+                {isLoading ? (
+                  <>
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin"></span>
+                    <span>Processing...</span>
+                  </>
+                ) : authMode === 'forgot' ? (
+                  <>
+                    <span>Request Reset Code</span>
+                    <ArrowRight size={13} />
+                  </>
+                ) : authMode === 'reset' ? (
+                  <>
+                    <span>Confirm Password Reset</span>
+                    <ArrowRight size={13} />
+                  </>
+                ) : isLoginMode ? (
+                  <>
+                    <span>Sign In To Workspace</span>
+                    <ArrowRight size={13} />
+                  </>
+                ) : step < 4 ? (
+                  <>
+                    <span>Continue Step {step + 1}</span>
+                    <ArrowRight size={13} />
+                  </>
+                ) : (
+                  <>
+                    <span>Complete Setup &amp; Launch</span>
+                    <ArrowRight size={13} />
+                  </>
+                )}
+              </button>
+            </div>
+
+            {authMode === 'login' && (
+              <div className="text-center pt-2.5 border-t border-[#f1f5f9] w-full">
+                <span className="text-[11px] text-slate-400 font-semibold">New to SmartBill Pro? </span>
+                <a 
+                  href={`${MARKETING_URL}/pricing`}
+                  className="text-[11px] text-[#006a61] hover:underline font-bold transition-all"
+                >
+                  Create an Account
+                </a>
+              </div>
+            )}
           </div>
         </form>
 
-        {/* Demo Assist HUD */}
-        {isLoginMode && (
-          <div className="mt-6 pt-4 border-t border-[#e2e8f0]/60 space-y-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#006f66]">
-              <ShieldCheck size={13} />
-              <span>SECURE MULTI-TENANT GATEWAY ACTIVE</span>
-            </div>
-            <p className="text-[10.5px] text-[#7c839b] font-medium leading-relaxed">
-              Register a business first, then use your created username/password to log in to your tenant context.
-            </p>
-          </div>
-        )}
+
       </div>
 
-      {/* Footer legalities */}
-      <p className="text-center font-sans text-[10px] text-[#7c839b] font-bold uppercase tracking-wider mt-6">
-        Protected Workspace · Multi-Tenant Gateway
-      </p>
+      {/* Footer legalities with Terms & Privacy policy */}
+      <div className="text-center mt-6 space-y-1.5">
+        <p className="font-sans text-[10px] text-[#7c839b] font-bold uppercase tracking-wider">
+          Protected Workspace · Multi-Tenant Gateway
+        </p>
+        <div className="flex justify-center gap-3 text-[10px] font-bold text-[#006a61]">
+          <a href={`${MARKETING_URL}/terms`} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            Terms of Service
+          </a>
+          <span className="text-slate-300 select-none">•</span>
+          <a href={`${MARKETING_URL}/privacy`} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            Privacy Policy
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

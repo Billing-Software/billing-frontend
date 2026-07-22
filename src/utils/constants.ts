@@ -15,8 +15,11 @@ export const INITIAL_BUSINESS_PROFILE = {
   defaultTaxRate: '18',
   pricesIncludeTax: true
 };
-export const INITIAL_WHATSAPP = {
-  apiKey: '',
-  isConnected: false,
-  templates: []
+export const INITIAL_WHATSAPP_STATUS = {
+  id: 0,
+  displayPhoneNumber: undefined,
+  wabaId: undefined,
+  status: 'NotConnected',
+  connectedAt: undefined,
+  disconnectedAt: undefined,
 };

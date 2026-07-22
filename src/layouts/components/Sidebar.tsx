@@ -34,6 +34,7 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
     { id: 'services', label: 'Services', icon: Sparkles },
     { id: 'inventory', label: 'Inventory', icon: Boxes },
     ...(user?.role === 'Owner' ? [
+      { id: 'branches', label: 'Branches', icon: Building2 },
       { id: 'staff', label: 'Staff', icon: SquareUser },
       { id: 'settings', label: 'Settings', icon: Settings },
       { id: 'expenses', label: 'Expenses', icon: Wallet },
