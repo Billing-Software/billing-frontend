@@ -19,6 +19,8 @@ import Header from './components/Header';
 import { User, Branch } from '../types';
 import logoText from '../assets/BillCom-text.svg';
 
+import { useBusinessConfig } from '../context/BusinessConfigContext';
+
 interface MainLayoutProps {
   children?: React.ReactNode;
   activeTab: string;
@@ -48,6 +50,22 @@ export default function MainLayout({
   setSearchText,
   handleQuickShare
 }: MainLayoutProps) {
+  const { t, hasFeature } = useBusinessConfig();
+
+  const mobileMenuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },
+    { id: 'billing', label: `New ${t('invoice')}`, icon: Receipt, show: true },
+    { id: 'invoices', label: t('invoice', true), icon: FileText, show: true },
+    { id: 'customers', label: t('customer', true), icon: Users, show: hasFeature('customers') },
+    { id: 'services', label: t('service', true), icon: Sparkles, show: hasFeature('services') },
+    { id: 'inventory', label: t('product', true), icon: Boxes, show: hasFeature('inventory') && hasFeature('products') },
+    ...(currentUser?.role === 'Owner' ? [
+      { id: 'branches', label: 'Branches', icon: Building2, show: true },
+      { id: 'staff', label: t('staff', true), icon: SquareUser, show: hasFeature('staff') },
+      { id: 'settings', label: 'Settings', icon: Settings, show: true },
+    ] : [])
+  ].filter(item => item.show);
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* 1. Desktop Navigation Side Panel */}
@@ -134,19 +152,7 @@ export default function MainLayout({
 
                 {/* Mobile Menu Links */}
                 <nav className="space-y-1">
-                  {[
-                    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-                    { id: 'billing', label: 'Billing', icon: Receipt },
-                    { id: 'invoices', label: 'Invoices', icon: FileText },
-                    { id: 'customers', label: 'Customers', icon: Users },
-                    { id: 'services', label: 'Services', icon: Sparkles },
-                    { id: 'inventory', label: 'Inventory', icon: Boxes },
-                    ...(currentUser?.role === 'Owner' ? [
-                      { id: 'branches', label: 'Branches', icon: Building2 },
-                      { id: 'staff', label: 'Staff', icon: SquareUser },
-                      { id: 'settings', label: 'Settings', icon: Settings },
-                    ] : [])
-                  ].map(tab => {
+                  {mobileMenuItems.map(tab => {
                     const IconComponent = tab.icon;
                     const isActive = activeTab === tab.id;
                     return (

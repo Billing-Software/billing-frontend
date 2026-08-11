@@ -14,6 +14,7 @@ import Settings from '../pages/Settings/Settings';
 import Expenses from '../pages/Expenses/Expenses';
 import Login from '../pages/Login/Login';
 import Invoices from '../pages/Invoices/Invoices';
+import ReportsPage from '../pages/Reports/ReportsPage';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import Onboarding from '../pages/Onboarding/Onboarding';
@@ -155,6 +156,7 @@ export default function AppRoutes({
         <Route path="customers" element={<Customers />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="invoices" element={<Invoices />} />
+        <Route path="reports" element={<ReportsPage />} />
         <Route path="staff" element={currentUser?.role === 'Owner' ? <Staff /> : <Navigate to="/dashboard" replace />} />
         <Route path="branches" element={currentUser?.role === 'Owner' ? <Branches /> : <Navigate to="/dashboard" replace />} />
         <Route path="settings" element={currentUser?.role === 'Owner' ? <Settings /> : <Navigate to="/dashboard" replace />} />

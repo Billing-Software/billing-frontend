@@ -7,3 +7,4 @@ export * from './settings.types';
 export * from './user.types';
 export * from './auth.types';
 export * from './branch.types';
+export * from './businessConfig.types';

@@ -9,6 +9,7 @@ interface AuthContextType {
   setCurrentBranch: (branch: Branch | null) => void;
   branches: Branch[];
   refreshBranches: () => Promise<void>;
+  handleLogout: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,6 +29,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_data');
+    localStorage.removeItem('token');
+    localStorage.removeItem('jwt_token');
+    setCurrentUser(null);
+    window.dispatchEvent(new Event('auth_logout'));
+  };
 
   const refreshBranches = async () => {
     if (!currentUser) return;
@@ -61,12 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Listen to logout event dispatched by API client
   useEffect(() => {
-    const handleLogout = () => {
+    const onAuthLogout = () => {
       setCurrentUser(null);
     };
-    window.addEventListener('auth_logout', handleLogout);
+    window.addEventListener('auth_logout', onAuthLogout);
     return () => {
-      window.removeEventListener('auth_logout', handleLogout);
+      window.removeEventListener('auth_logout', onAuthLogout);
     };
   }, []);
 
@@ -75,6 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('auth_data', JSON.stringify(user));
     } else {
       localStorage.removeItem('auth_data');
+      localStorage.removeItem('token');
+      localStorage.removeItem('jwt_token');
     }
     setCurrentUser(user);
   };
@@ -86,7 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       currentBranch, 
       setCurrentBranch,
       branches,
-      refreshBranches
+      refreshBranches,
+      handleLogout
     }}>
       {children}
     </AuthContext.Provider>

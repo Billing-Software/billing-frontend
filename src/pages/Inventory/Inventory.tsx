@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react';
+import { Search, Plus, RotateCcw, AlertTriangle, Loader2, FolderPlus, Tag, Layers } from 'lucide-react';
 import { InventoryItem } from '../../types';
 import { inventoryService } from '../../services/inventory.service';
 import { categoryService, Category } from '../../services/category.service';
@@ -167,6 +167,46 @@ export default function Inventory() {
           <Plus size={15} />
           <span>Add Stock Item</span>
         </button>
+      </div>
+
+      {/* Mobile-Style Category Navigation Tabs */}
+      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        <button
+          onClick={() => setSelectedCategory('')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            !selectedCategory 
+              ? 'bg-[#006a61] text-white shadow-sm' 
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <Layers size={13} />
+          <span>All Stock Items</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${!selectedCategory ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+            {inventory.length}
+          </span>
+        </button>
+
+        {categories.map((catName) => {
+          const count = inventory.filter(item => item.category === catName).length;
+          const isSelected = selectedCategory === catName;
+          return (
+            <button
+              key={catName}
+              onClick={() => setSelectedCategory(isSelected ? '' : catName)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                isSelected 
+                  ? 'bg-[#006a61] text-white shadow-sm' 
+                  : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <Tag size={12} className={isSelected ? 'text-white' : 'text-[#006a61]'} />
+              <span>{catName}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Interactive Form Panel */}

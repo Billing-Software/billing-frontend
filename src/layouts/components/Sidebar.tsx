@@ -12,10 +12,13 @@ import {
   LogOut,
   Building2,
   Wallet,
-  FileText
+  FileText,
+  BadgeCheck,
+  FileBarChart
 } from 'lucide-react';
 import { User } from '../../types';
 import logoText from '../../assets/BillCom-text.svg';
+import { useBusinessConfig } from '../../context/BusinessConfigContext';
 
 interface SidebarProps {
   currentTab: string;
@@ -26,38 +29,48 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, user }: SidebarProps) {
+  const { config, t, hasFeature } = useBusinessConfig();
+
+  const isOwner = user?.role === 'Owner' || user?.role === 'Admin';
+
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'billing', label: 'Billing', icon: Receipt },
-    { id: 'invoices', label: 'Invoices', icon: FileText },
-    { id: 'customers', label: 'Customers', icon: Users },
-    { id: 'services', label: 'Services', icon: Sparkles },
-    { id: 'inventory', label: 'Inventory', icon: Boxes },
-    ...(user?.role === 'Owner' ? [
-      { id: 'branches', label: 'Branches', icon: Building2 },
-      { id: 'staff', label: 'Staff', icon: SquareUser },
-      { id: 'settings', label: 'Settings', icon: Settings },
-      { id: 'expenses', label: 'Expenses', icon: Wallet },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },
+    { id: 'billing', label: `New ${t('invoice')}`, icon: Receipt, show: true },
+    { id: 'invoices', label: t('invoice', true), icon: FileText, show: true },
+    { id: 'reports', label: 'GST Reports', icon: FileBarChart, show: true },
+    { id: 'customers', label: t('customer', true), icon: Users, show: hasFeature('customers') },
+    { id: 'services', label: t('service', true), icon: Sparkles, show: hasFeature('services') },
+    { id: 'inventory', label: t('product', true), icon: Boxes, show: hasFeature('inventory') && hasFeature('products') },
+    ...(isOwner ? [
+      { id: 'branches', label: 'Branches', icon: Building2, show: true },
+      { id: 'staff', label: t('staff', true), icon: SquareUser, show: hasFeature('staff') },
+      { id: 'expenses', label: 'Expenses', icon: Wallet, show: hasFeature('expenses') },
+      { id: 'settings', label: 'Settings', icon: Settings, show: true },
     ] : [])
-  ];
+  ].filter(item => item.show);
+
+  const businessTypeBadge = config?.businessType || 'General Retail Store';
 
   return (
     <aside id="sidebar-panel" className="hidden md:flex flex-col h-screen py-6 px-4 bg-white border-r border-[#e2e8f0] w-[240px] shrink-0 z-30 justify-between">
       <div>
         {/* Branding */}
-        <div className="mb-6 px-2 flex flex-col items-start gap-1">
+        <div className="mb-4 px-2 flex flex-col items-start gap-1">
           <img src={logoText} alt="SmartBill Pro" className="h-8 object-contain" />
-          <p className="font-sans text-[9px] text-[#7c839b] font-semibold uppercase tracking-wider pl-1">Admin Terminal</p>
+          <div className="flex items-center gap-1 bg-[#006a61]/10 text-[#006a61] px-2 py-0.5 rounded-full text-[10px] font-bold mt-1">
+            <BadgeCheck size={11} />
+            <span className="truncate max-w-[170px]" title={businessTypeBadge}>{businessTypeBadge}</span>
+          </div>
         </div>
 
         {/* Quick Action Button */}
         <button 
           id="new-bill-btn"
           onClick={onNewBill}
-          className="w-full mb-6 bg-[#006a61] text-[#ffffff] font-sans text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-opacity-90 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-sm shadow-[#006a61]/10"
+          className="w-full mb-5 bg-[#006a61] text-[#ffffff] font-sans text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-opacity-90 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-sm shadow-[#006a61]/10"
         >
           <Plus size={16} />
-          <span>New Bill</span>
+          <span>New {t('invoice')}</span>
         </button>
 
         {/* Menu Navigation */}
@@ -120,16 +133,16 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
               <p className="font-sans text-xs font-semibold text-[#0b1c30] truncate">{user.name || user.username}</p>
               <p className="font-sans text-[9px] text-[#45464d] leading-none truncate">{user.role}</p>
               <p className="font-sans text-[9px] text-[#7c839b] leading-normal truncate mt-0.5" title={user.businessName}>
-                {user.businessName} (ID: {user.businessId})
+                {user.businessName}
               </p>
             </div>
             <button 
-              id="logout-btn"
+              id="sidebar-logout-icon-btn"
               title="Logout Securely" 
               onClick={onLogout}
-              className="p-1.5 text-[#76777d] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/40 rounded-lg transition-colors"
+              className="p-2 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/70 rounded-lg transition-colors cursor-pointer shrink-0"
             >
-              <LogOut size={15} />
+              <LogOut size={16} />
             </button>
           </div>
         )}

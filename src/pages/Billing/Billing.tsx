@@ -21,10 +21,13 @@ import { categoryService, Category } from '../../services/category.service';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 import { whatsAppService } from '../../services/whatsapp.service';
+import { useBusinessConfig } from '../../context/BusinessConfigContext';
+import HSNSacSearchModal from '../../components/tax/HSNSacSearchModal';
 
 export default function Billing() {
   const { currentUser, currentBranch } = useAuth();
   const { showToast } = useToast();
+  const { config, t } = useBusinessConfig();
 
   // API Scoped States
   const [services, setServices] = useState<Service[]>([]);
@@ -33,6 +36,16 @@ export default function Billing() {
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Quick Item & HSN Modal States
+  const [isQuickItemModalOpen, setIsQuickItemModalOpen] = useState<boolean>(false);
+  const [quickItemName, setQuickItemName] = useState<string>('');
+  const [quickItemPrice, setQuickItemPrice] = useState<string>('');
+  const [quickItemTaxRate, setQuickItemTaxRate] = useState<number>(18);
+  const [quickItemHsnSac, setQuickItemHsnSac] = useState<string>('');
+
+  const [isHsnModalOpen, setIsHsnModalOpen] = useState<boolean>(false);
+  const [hsnSearchType, setHsnSearchType] = useState<'Goods' | 'Services'>('Goods');
 
   // POS States
   const [cart, setCart] = useState<BillItem[]>([]);
@@ -290,7 +303,7 @@ export default function Billing() {
       // Send invoice via WhatsApp if customer has a valid phone number
       if (activeCustomer.phone && activeCustomer.phone !== 'N/A') {
         try {
-          await whatsAppService.sendDocument(created.id, activeCustomer.phone, `Invoice ${created.billNumber}`);
+          await whatsAppService.sendInvoiceTemplate(created.id, activeCustomer.phone);
           showToast(`Invoice sent to ${activeCustomer.phone} via WhatsApp`, "success");
         } catch (waErr: any) {
           console.error("WhatsApp send failed:", waErr);
@@ -462,20 +475,35 @@ export default function Billing() {
           </div>
         </section>
 
-        {/* Quick Service Catalog Selector */}
+        {/* Quick Service / Product Catalog Selector */}
         <section className="bg-white rounded-xl p-5 border border-[#e2e8f0]/80 shadow-sm flex-1 flex flex-col min-h-[400px]">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-            <h2 className="font-display text-lg font-bold text-[#0b1c30]">Quick Services</h2>
-            <div className="relative w-full sm:w-48">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#7c839b]" />
-              <input
-                id="service-filter-input"
-                type="text"
-                value={filterQuery}
-                onChange={(e) => setFilterQuery(e.target.value)}
-                placeholder="Filter services..."
-                className="w-full pl-8 pr-3 py-1 bg-white border border-[#c6c6cd] rounded-md font-sans text-xs focus:border-[#006a61] focus:outline-none"
-              />
+            <div>
+              <h2 className="font-display text-lg font-bold text-[#0b1c30]">
+                Quick {t('product', true)} & {t('service', true)}
+              </h2>
+              <p className="text-[11px] text-[#7c839b] font-medium">Select items or scan barcode to add to {t('invoice')}</p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-48">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#7c839b]" />
+                <input
+                  id="service-filter-input"
+                  type="text"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  placeholder={`Search ${t('product', true)} / ${t('service', true)}...`}
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#c6c6cd] rounded-lg font-sans text-xs focus:border-[#006a61] focus:outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickItemModalOpen(true)}
+                className="bg-[#006a61]/10 text-[#006a61] hover:bg-[#006a61] hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 flex items-center gap-1"
+              >
+                <Plus size={14} />
+                <span>Quick Item</span>
+              </button>
             </div>
           </div>
 
@@ -850,6 +878,136 @@ export default function Billing() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Quick Custom Item Modal */}
+      {isQuickItemModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-md p-6 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-display font-extrabold text-slate-900 text-base">Add Quick Custom Item</h3>
+              <button onClick={() => setIsQuickItemModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Item / Charge Name *</label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="e.g. Custom Repair, Special Thali, Service Fee"
+                  value={quickItemName}
+                  onChange={(e) => setQuickItemName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#006a61]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Price (₹) *</label>
+                  <input
+                    type="number"
+                    placeholder="250"
+                    value={quickItemPrice}
+                    onChange={(e) => setQuickItemPrice(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#006a61]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">GST Tax Rate</label>
+                  <select
+                    value={quickItemTaxRate}
+                    onChange={(e) => setQuickItemTaxRate(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#006a61]"
+                  >
+                    <option value={0}>0% (Exempt)</option>
+                    <option value={5}>5% (Reduced / Food)</option>
+                    <option value={12}>12% (Standard)</option>
+                    <option value={18}>18% (Standard Services)</option>
+                    <option value={28}>28% (Luxury)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs font-bold text-slate-700">HSN / SAC Code (Optional)</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHsnSearchType('Goods');
+                      setIsHsnModalOpen(true);
+                    }}
+                    className="text-[10px] font-bold text-[#006a61] hover:underline"
+                  >
+                    🔍 Search GST Finder
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. 996331 or 6109"
+                  value={quickItemHsnSac}
+                  onChange={(e) => setQuickItemHsnSac(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#006a61]"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setIsQuickItemModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!quickItemName.trim() || !quickItemPrice || isNaN(Number(quickItemPrice))) {
+                    showToast("Please enter a valid item name and price", "warning");
+                    return;
+                  }
+
+                  const price = Number(quickItemPrice);
+                  const taxAmount = (price * quickItemTaxRate) / 100;
+                  const total = price + taxAmount;
+
+                  const item: BillItem = {
+                    serviceId: Math.floor(Date.now() / 1000),
+                    serviceName: `${quickItemName.trim()} ${quickItemHsnSac ? `(HSN/SAC: ${quickItemHsnSac})` : ''}`,
+                    unitPrice: price,
+                    quantity: 1,
+                    lineTotal: total
+                  };
+
+                  setCart(prev => [...prev, item]);
+                  showToast(`Added '${quickItemName}' to ${t('invoice')}!`, "success");
+                  setQuickItemName('');
+                  setQuickItemPrice('');
+                  setQuickItemHsnSac('');
+                  setIsQuickItemModalOpen(false);
+                }}
+                className="px-5 py-2 bg-[#006a61] text-white rounded-xl text-xs font-semibold hover:bg-opacity-90 shadow-sm"
+              >
+                Add & Bill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive HSN/SAC Search Modal */}
+      <HSNSacSearchModal
+        isOpen={isHsnModalOpen}
+        onClose={() => setIsHsnModalOpen(false)}
+        type={hsnSearchType}
+        onSelect={(code, desc, gstRate) => {
+          setQuickItemHsnSac(code);
+          setQuickItemTaxRate(gstRate);
+          showToast(`Applied ${code} (${gstRate}% GST)`, "info");
+        }}
+      />
     </div>
   );
 }

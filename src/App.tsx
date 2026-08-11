@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
+import { BusinessConfigProvider } from './context/BusinessConfigContext';
 import AppRoutes from './routes/AppRoutes';
 
 function AppContent() {
@@ -33,7 +34,9 @@ export default function App() {
     <AuthProvider>
       <ThemeProvider>
         <ToastProvider>
-          <AppContent />
+          <BusinessConfigProvider>
+            <AppContent />
+          </BusinessConfigProvider>
         </ToastProvider>
       </ThemeProvider>
     </AuthProvider>

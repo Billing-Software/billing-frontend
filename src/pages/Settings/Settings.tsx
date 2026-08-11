@@ -15,18 +15,26 @@ import {
   Link,
   Unlink,
   Phone,
-  Info
+  Info,
+  LogOut,
+  ShieldAlert,
+  Power
 } from 'lucide-react';
 import { businessService } from '../../services/business.service';
 import { settingsService } from '../../services/settings.service';
-import { whatsAppService, WhatsAppAccountStatus } from '../../services/whatsapp.service';
+import { whatsAppService, WhatsAppAccountStatus, WhatsAppTemplate } from '../../services/whatsapp.service';
 import { categoryService, Category } from '../../services/category.service';
 import { apiClient } from '../../services/api.client';
 import { useToast } from '../../hooks/useToast';
+import { useMetaSDK } from '../../hooks/useMetaSDK';
 import { authService } from '../../services/auth.service';
+import { useBusinessConfig } from '../../context/BusinessConfigContext';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function Settings() {
   const { showToast } = useToast();
+  const { handleLogout, currentUser: user } = useAuth();
+  const { config, updateConfig, refreshConfig } = useBusinessConfig();
   const [profile, setProfile] = useState<any>(null);
   const [waStatus, setWaStatus] = useState<WhatsAppAccountStatus | null>(null);
   const [isWaConnecting, setIsWaConnecting] = useState<boolean>(false);
@@ -49,6 +57,7 @@ export default function Settings() {
   const [state, setState] = useState<string>('');
   const [postalCode, setPostalCode] = useState<string>('');
   const [gstIn, setGstIn] = useState<string>('');
+  const [gstScheme, setGstScheme] = useState<string>('Regular');
   const [defaultTaxRate, setDefaultTaxRate] = useState<number>(18.00);
   const [pricesIncludeTax, setPricesIncludeTax] = useState<boolean>(true);
   const [receiptHeader, setReceiptHeader] = useState<string>('');
@@ -57,23 +66,24 @@ export default function Settings() {
   const [receiptTemplateType, setReceiptTemplateType] = useState<string>('Thermal80mm');
 
   // WhatsApp Cloud API states are now in waStatus
-
-  // Category states
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [newCategoryName, setNewCategoryName] = useState<string>('');
-  const [newCategoryType, setNewCategoryType] = useState<string>('Service');
-  const [newCategoryParentId, setNewCategoryParentId] = useState<number | null>(null);
+  const [waTemplate, setWaTemplate] = useState<WhatsAppTemplate | null>(null);
 
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const [profileData, waStatusData, categoryData] = await Promise.all([
+      const [profileData, waStatusData] = await Promise.all([
         businessService.getProfile(),
-        whatsAppService.getStatus(),
-        categoryService.getAll()
+        whatsAppService.getStatus()
       ]);
       
       setProfile(profileData);
+      setWaStatus(waStatusData);
+
+      if (waStatusData?.status === 'Connected') {
+        whatsAppService.getTemplates().then(templates => {
+          if (templates && templates.length > 0) setWaTemplate(templates[0]);
+        }).catch(() => {});
+      }
       setLegalName(profileData.legalName || '');
       setTradingName(profileData.tradingName || '');
       setLogoUrl(profileData.logoUrl || '');
@@ -83,9 +93,11 @@ export default function Settings() {
       setAddress(profileData.address || '');
       setCity(profileData.city || '');
       setState(profileData.state || '');
-      setPostalCode(profileData.postalCode || '');
+      const scheme = profileData.gstScheme || (config?.gstScheme) || 'Regular';
+      setGstScheme(scheme);
       setGstIn(profileData.gstIn || '');
-      setDefaultTaxRate(profileData.defaultTaxRate ?? 18.00);
+      const isNonGst = scheme.toLowerCase() === 'none' || scheme.toLowerCase() === 'non-gst';
+      setDefaultTaxRate(isNonGst ? 0 : (profileData.defaultTaxRate ?? 18.00));
       setPricesIncludeTax(profileData.pricesIncludeTax ?? true);
       setReceiptHeader(profileData.receiptHeader || '');
       setReceiptFooter(profileData.receiptFooter || '');
@@ -93,7 +105,6 @@ export default function Settings() {
       setReceiptTemplateType(profileData.receiptTemplateType || 'Thermal80mm');
 
       setWaStatus(waStatusData);
-      setCategories(categoryData || []);
     } catch (e) {
       console.error('Error fetching settings', e);
     } finally {
@@ -146,6 +157,7 @@ export default function Settings() {
         state,
         postalCode,
         gstIn,
+        gstScheme,
         defaultTaxRate: Number(defaultTaxRate),
         pricesIncludeTax,
         receiptHeader,
@@ -154,7 +166,8 @@ export default function Settings() {
         receiptTemplateType
       });
       setProfile(updated);
-      showToast("Business profile settings saved securely!", "success");
+      await updateConfig({ gstScheme, gstIn, registeredState: state });
+      showToast("Business profile & tax settings saved securely!", "success");
     } catch (err: any) {
       showToast("Error saving business profile: " + (err.response?.data || err.message), "error");
     }
@@ -191,24 +204,90 @@ export default function Settings() {
     }
   };
 
-  const handleConnectWhatsApp = async () => {
+  const metaSDK = useMetaSDK({
+    onSuccess: async (result) => {
+      try {
+        setIsWaConnecting(true);
+        const status = await whatsAppService.connect({
+          code: result.code,
+          wabaId: result.wabaId,
+          phoneNumberId: result.phoneNumberId,
+          displayPhoneNumber: result.displayPhoneNumber,
+        });
+        setWaStatus(status);
+        showToast('WhatsApp Business connected successfully via Meta Embedded Signup!', 'success');
+      } catch (err: any) {
+        showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
+      } finally {
+        setIsWaConnecting(false);
+      }
+    },
+    onError: (error) => {
+      showToast('Embedded Signup error: ' + error, 'error');
+      setIsWaConnecting(false);
+    },
+  });
+
+  const [showWaModal, setShowWaModal] = useState<boolean>(false);
+  const [manualCodeInput, setManualCodeInput] = useState<string>('');
+
+  const handleConnectWhatsApp = () => {
+    // Open the WhatsApp Connection Modal
+    setShowWaModal(true);
+  };
+
+  const handleLaunchMetaSDK = () => {
+    setIsWaConnecting(true);
+    const launched = metaSDK.launchEmbeddedSignup();
+    if (!launched) {
+      showToast('Meta SDK popup is not ready or blocked by browser. You can use Demo WABA or manual code.', 'info');
+      setIsWaConnecting(false);
+    }
+  };
+
+  const handleConnectDemoWaba = async () => {
     setIsWaConnecting(true);
     try {
-      // In production, this would open Meta Embedded Signup in a popup/redirect
-      // and receive the authorization code via callback.
-      // For now, prompt for the code manually.
-      const code = prompt(
-        'Enter the Meta authorization code from Embedded Signup:\n\n' +
-        'To get this code, complete the Facebook Login flow at:\n' +
-        'https://www.facebook.com/dialog/oauth?client_id={YOUR_APP_ID}&redirect_uri={YOUR_REDIRECT}&response_type=code&scope=whatsapp_business_management,whatsapp_business_messaging'
-      );
-      if (!code) {
-        setIsWaConnecting(false);
-        return;
-      }
-      const status = await whatsAppService.connect(code);
+      const status = await whatsAppService.connect({
+        code: 'EAAPXJmR6jU8BSHWhyNFz3rz2lZANRyvsjaONhQE8X5D7LihFf6IkKRDvcB1OS7kIfAXRMXX6xFWp3cGTuSKyuzVPOyt8bVRZBq6jEI50QGdfsDsoHfcZBFVoE7Wb5XKgnFXnPZARn5DegoLy2dsEDZAGRMYWImvkmr9FeSAiZCsYSFM7ZAEn97TxPYrtia1ZCJJjWmZAeSUbwLOAlFEpjXGWvbVAZAh1C8gIXETLJs2hGBqOssFSgMAS0eK3zo3FZBtJ2mZCbQ2xasQMsM2W8N7qsXGGEj0JsQZDZD',
+        wabaId: '1063228732791303',
+        phoneNumberId: '1273696479156949',
+        displayPhoneNumber: '+1 (555) 672-6923',
+      });
       setWaStatus(status);
+      setShowWaModal(false);
+      showToast('WhatsApp Business connected successfully (Demo WABA)!', 'success');
+
+      // Fetch auto-provisioned template
+      whatsAppService.getTemplates().then(templates => {
+        if (templates && templates.length > 0) setWaTemplate(templates[0]);
+      }).catch(() => {});
+    } catch (err: any) {
+      showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
+    } finally {
+      setIsWaConnecting(false);
+    }
+  };
+
+  const handleConnectManualCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualCodeInput.trim()) return;
+    setIsWaConnecting(true);
+    try {
+      const status = await whatsAppService.connect({
+        code: manualCodeInput.trim(),
+        wabaId: '1063228732791303',
+        phoneNumberId: '1273696479156949',
+        displayPhoneNumber: '+1 (555) 672-6923',
+      });
+      setWaStatus(status);
+      setShowWaModal(false);
+      setManualCodeInput('');
       showToast('WhatsApp Business connected successfully!', 'success');
+
+      whatsAppService.getTemplates().then(templates => {
+        if (templates && templates.length > 0) setWaTemplate(templates[0]);
+      }).catch(() => {});
     } catch (err: any) {
       showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
     } finally {
@@ -221,37 +300,21 @@ export default function Settings() {
     try {
       await whatsAppService.disconnect();
       setWaStatus({ id: 0, status: 'NotConnected' });
+      setWaTemplate(null);
       showToast('WhatsApp disconnected.', 'success');
     } catch (err: any) {
       showToast('Disconnect failed: ' + (err.response?.data?.error || err.message), 'error');
     }
   };
 
-  const handleAddCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCategoryName.trim()) return;
+  const handleSyncTemplate = async () => {
     try {
-      const added = await categoryService.create({
-        name: newCategoryName.trim(),
-        type: newCategoryType,
-        parentId: newCategoryParentId || undefined
-      });
-      setCategories(prev => [...prev, added]);
-      setNewCategoryName('');
-      setNewCategoryParentId(null);
-      showToast("Category registered successfully!", "success");
+      showToast('Provisioning BillCom Invoice Template on WABA...', 'info');
+      const t = await whatsAppService.syncTemplates();
+      setWaTemplate(t);
+      showToast('BillCom Invoice Template synced successfully!', 'success');
     } catch (err: any) {
-      showToast("Error adding category: " + (err.response?.data || err.message), "error");
-    }
-  };
-
-  const handleDeleteCategory = async (id: number) => {
-    try {
-      await categoryService.delete(id);
-      setCategories(prev => prev.filter(c => c.id !== id));
-      showToast("Category removed successfully.", "success");
-    } catch (err: any) {
-      showToast("Error deleting category: " + (err.response?.data || err.message), "error");
+      showToast('Template sync failed: ' + (err.response?.data?.error || err.message), 'error');
     }
   };
 
@@ -452,30 +515,110 @@ export default function Settings() {
                 />
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">GSTIN Registration Code</label>
-                <input 
-                  type="text" 
-                  value={gstIn}
-                  onChange={(e) => setGstIn(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
-                  placeholder="GSTIN Code or N/A"
-                />
+            {/* GST Registration & Tax Setup Box - Matching Signup Page */}
+            <div className="space-y-4 text-left bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80 sm:col-span-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <label className="text-xs font-extrabold text-slate-800 uppercase tracking-wider block">Are you registered for GST?</label>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">Auto-calculates CGST/SGST vs IGST on bills &amp; invoices</p>
+                </div>
+                <div className="flex bg-slate-200/80 p-1 rounded-xl gap-1 shrink-0 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGstScheme('Regular');
+                      if (defaultTaxRate === 0) setDefaultTaxRate(18.00);
+                    }}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                      gstScheme !== 'None' && gstScheme !== 'Non-GST' 
+                        ? 'bg-white text-[#006a61] shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGstScheme('Non-GST');
+                      setDefaultTaxRate(0);
+                      setGstIn('');
+                    }}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                      gstScheme === 'None' || gstScheme === 'Non-GST' 
+                        ? 'bg-white text-slate-900 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    No
+                  </button>
+                </div>
               </div>
 
-              {/* Tax settings dropdown list */}
-              <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Primary CGST/SGST Tax Range</label>
-                <select 
-                  value={Number(defaultTaxRate)}
-                  onChange={(e) => setDefaultTaxRate(Number(e.target.value))}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none h-9"
-                >
-                  <option value={18}>18% Standard GST Rule</option>
-                  <option value={5}>5% Food &amp; Beauty Services</option>
-                  <option value={0}>0% Tax Exempt AMC Rule</option>
-                </select>
-              </div>
+              {gstScheme !== 'None' && gstScheme !== 'Non-GST' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200/60">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">GST Registration Scheme</label>
+                    <select
+                      value={gstScheme}
+                      onChange={(e) => setGstScheme(e.target.value)}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-slate-300 rounded-lg outline-none focus:border-[#006a61] h-9"
+                    >
+                      <option value="Regular">Regular GST Scheme (Taxable 5%, 12%, 18%, 28%)</option>
+                      <option value="Composition">Composition Scheme (1% / 6% Flat Rate)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">GSTIN Number (Optional)</label>
+                    <input 
+                      type="text" 
+                      value={gstIn}
+                      onChange={(e) => setGstIn(e.target.value)}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-slate-300 rounded-lg outline-none focus:border-[#006a61]"
+                      placeholder="e.g. 36AAAAA0000A1Z5"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Registered State</label>
+                    <select
+                      value={state}
+                      onChange={(e) => setState(e.target.value)}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-slate-300 rounded-lg outline-none focus:border-[#006a61] h-9"
+                    >
+                      {['Andhra Pradesh', 'Telangana', 'Karnataka', 'Tamil Nadu', 'Maharashtra', 'Delhi', 'Gujarat', 'Kerala', 'West Bengal', 'Odisha', 'Goa', 'Punjab', 'Rajasthan'].map((st) => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Primary CGST/SGST Tax Range</label>
+                    <select 
+                      value={Number(defaultTaxRate)}
+                      onChange={(e) => setDefaultTaxRate(Number(e.target.value))}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-slate-300 rounded-lg outline-none focus:border-[#006a61] h-9"
+                    >
+                      <option value={18}>18% Standard GST Rule</option>
+                      <option value={12}>12% Apparel &amp; Standard Goods</option>
+                      <option value={5}>5% Food &amp; Essential Services</option>
+                      <option value={0}>0% Tax Exempt Rule</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span className="text-xs font-bold text-amber-900">Non-GST Merchant (0% Tax Rate Applied)</span>
+                  </div>
+                  <span className="text-[10px] font-extrabold text-amber-800 uppercase bg-amber-200/60 px-2 py-0.5 rounded">
+                    GST Tax Inactive
+                  </span>
+                </div>
+              )}
+            </div>
             </div>
 
             <div className="flex items-center gap-2 pt-2">
@@ -487,9 +630,73 @@ export default function Settings() {
                 className="w-4 h-4 text-[#006a61] border border-[#c6c6cd] rounded focus:ring-0"
               />
               <label htmlFor="pricesIncludeTaxCheckbox" className="text-xs font-semibold text-[#0b1c30]">
-                Advertised menu prices automatically include regional CGST/SGST tax contributions.
+                Advertised prices automatically include regional CGST/SGST tax contributions.
               </label>
             </div>
+
+            {/* Business Type & Intelligent Vocabulary Configuration */}
+            {config && (
+              <div className="mt-6 pt-5 border-t border-[#e2e8f0] space-y-4 bg-slate-50/70 p-4 rounded-xl border border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-[#006a61] uppercase tracking-wider bg-[#006a61]/10 px-2 py-0.5 rounded">Growth Feature</span>
+                  <h4 className="font-display font-extrabold text-sm text-slate-900">Business Type & Vocabulary Configuration</h4>
+                </div>
+                <p className="text-xs text-slate-500 font-sans">
+                  Configures navigation tabs, dashboard widgets, and user-facing terminology ("Menu Item" vs "Product", "Client" vs "Customer").
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Business Type</label>
+                    <select
+                      value={config.businessType}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        await updateConfig({ businessType: val });
+                        showToast(`Configured layout for ${val}`, "success");
+                        refreshConfig();
+                      }}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
+                    >
+                      <option value="General Retail Store">General Retail Store</option>
+                      <option value="Restaurant">Restaurant</option>
+                      <option value="Tiffin Center / Mess">Tiffin Center / Mess</option>
+                      <option value="Bakery & Confectionery">Bakery & Confectionery</option>
+                      <option value="Grocery / Kirana Store">Grocery / Kirana Store</option>
+                      <option value="Clothing / Garments Store">Clothing / Garments Store</option>
+                      <option value="Pharmacy / Medical Store">Pharmacy / Medical Store</option>
+                      <option value="Electronics & Mobile Store">Electronics & Mobile Store</option>
+                      <option value="Salon / Barber / Beauty Parlour">Salon / Barber / Beauty Parlour</option>
+                      <option value="Repair & Maintenance Services">Repair & Maintenance Services</option>
+                      <option value="Software / IT Services">Software / IT Services</option>
+                      <option value="Consulting & Professional Services">Consulting & Professional Services</option>
+                      <option value="Clinic / Healthcare Center">Clinic / Healthcare Center</option>
+                      <option value="Tuition / Coaching Center">Tuition / Coaching Center</option>
+                      <option value="Manufacturing & Production">Manufacturing & Production</option>
+                      <option value="Wholesale & Trading">Wholesale & Trading</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Selling Model</label>
+                    <select
+                      value={config.sellingModel}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        await updateConfig({ sellingModel: val });
+                        showToast(`Selling model updated to ${val}`, "info");
+                        refreshConfig();
+                      }}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
+                    >
+                      <option value="GOODS_AND_SERVICES">Goods & Services (Products + Services)</option>
+                      <option value="GOODS_ONLY">Goods Only (Physical Products)</option>
+                      <option value="SERVICES_ONLY">Services Only (Non-Inventory Services)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="border-t border-[#e2e8f0]/40 pt-4 flex justify-end">
               <button 
@@ -619,6 +826,40 @@ export default function Settings() {
               )}
             </div>
 
+            {/* Managed WhatsApp Template Card */}
+            {waStatus?.status === 'Connected' && (
+              <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag size={16} className="text-[#006f66]" />
+                    <h4 className="font-display font-bold text-xs text-[#0b1c30]">Auto-Managed Invoice Template</h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSyncTemplate}
+                    className="px-3 py-1 bg-white border border-[#cbd5e1] rounded-lg text-[11px] font-bold text-[#0f172a] hover:bg-[#f1f5f9] transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 size={12} className="text-[#006f66]" />
+                    Sync / Provision Template
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border border-[#e2e8f0] flex items-center justify-between text-xs">
+                  <div>
+                    <span className="font-mono font-bold text-[#006f66]">{waTemplate?.templateName || 'billcom_invoice_v1'}</span>
+                    <span className="ml-2 text-[10px] text-[#64748b] uppercase font-semibold">({waTemplate?.category || 'UTILITY'})</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#dcfce7] text-[#166534]">
+                    {waTemplate?.status || 'APPROVED'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-[#475569] leading-relaxed">
+                  {waTemplate?.bodyText || 'Hello {{1}}, your invoice {{2}} for {{3}} has been generated by {{4}}.\n\nView and download your digital receipt:\n{{5}}\n\nThank you for your business!'}
+                </p>
+              </div>
+            )}
+
             {/* Connect / Disconnect Button */}
             <div className="flex justify-center">
               {waStatus?.status === 'Connected' ? (
@@ -659,159 +900,7 @@ export default function Settings() {
           </div>
         </section>
 
-        {/* Category Management Panel */}
-        <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm overflow-hidden mt-6">
-          <div className="p-5 border-b bg-[#f8f9ff] flex items-center gap-2.5">
-            <Tag size={18} className="text-[#006f66]" />
-            <div>
-              <h3 className="font-display font-bold text-sm text-[#0b1c30]">Category Management</h3>
-              <p className="font-sans text-[10px] text-[#7c839b] font-medium uppercase mt-0.5">Define and organize product, service, and expense categories dynamically.</p>
-            </div>
-          </div>
-          
-          <div className="p-5 space-y-4">
-            <form onSubmit={handleAddCategory} className="flex flex-col sm:flex-row gap-3">
-              <input 
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="Category Name (e.g. Skin Care, Travel, Supplies)"
-                className="flex-1 text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
-                required
-              />
-              <select
-                value={newCategoryType}
-                onChange={(e) => {
-                  setNewCategoryType(e.target.value);
-                  setNewCategoryParentId(null);
-                }}
-                className="text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
-              >
-                <option value="Service">Service Category</option>
-                <option value="Inventory">Inventory Category</option>
-                <option value="Expense">Expense Category</option>
-              </select>
-              <select
-                value={newCategoryParentId || ''}
-                onChange={(e) => setNewCategoryParentId(e.target.value ? Number(e.target.value) : null)}
-                className="text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61] min-w-[150px]"
-              >
-                <option value="">No Parent (Top Level)</option>
-                {(() => {
-                  const filteredCats = categories.filter(c => c.type === newCategoryType);
-                  const tree = buildCategoryTree(filteredCats);
-                  const flat = flattenCategoryTree(tree);
-                  return flat.map(({ category: c, depth }) => (
-                    <option key={c.id} value={c.id}>
-                      {'\u00A0'.repeat(depth * 3) + (depth > 0 ? '↳ ' : '') + c.name}
-                    </option>
-                  ));
-                })()}
-              </select>
-              <button 
-                type="submit"
-                className="bg-[#006a61] text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center justify-center gap-1 hover:bg-opacity-95"
-              >
-                <Plus size={14} /> Add Category
-              </button>
-            </form>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-              {/* Service Categories */}
-              <div className="space-y-2">
-                <h4 className="text-[10px] font-bold text-[#006a61] uppercase tracking-wider border-b pb-1">Service Categories</h4>
-                <div className="space-y-1.5 max-h-[250px] overflow-y-auto pr-1">
-                  {(() => {
-                    const serviceCats = categories.filter(c => c.type === 'Service');
-                    const tree = buildCategoryTree(serviceCats);
-                    const flat = flattenCategoryTree(tree);
-                    return flat.length > 0 ? (
-                      flat.map(({ category: c, depth }) => (
-                        <div key={c.id} style={{ marginLeft: `${depth * 16}px` }} className={`flex justify-between items-center p-1.5 bg-[#f8f9ff] border border-[#e2e8f0]/60 rounded hover:border-[#006a61]/35 ${depth > 0 ? 'text-xs border-dashed' : ''}`}>
-                          <span className="text-xs font-semibold text-[#0b1c30] flex items-center gap-1">
-                            {depth > 0 && <span className="text-gray-400">↳</span>}
-                            {c.name}
-                          </span>
-                          <button 
-                            type="button"
-                            onClick={() => handleDeleteCategory(c.id)}
-                            className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/50 rounded transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-[10px] text-[#7c839b] font-semibold italic text-center py-4">No categories configured</p>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Inventory Categories */}
-              <div className="space-y-2">
-                <h4 className="text-[10px] font-bold text-[#006a61] uppercase tracking-wider border-b pb-1">Inventory Categories</h4>
-                <div className="space-y-1.5 max-h-[250px] overflow-y-auto pr-1">
-                  {(() => {
-                    const invCats = categories.filter(c => c.type === 'Inventory');
-                    const tree = buildCategoryTree(invCats);
-                    const flat = flattenCategoryTree(tree);
-                    return flat.length > 0 ? (
-                      flat.map(({ category: c, depth }) => (
-                        <div key={c.id} style={{ marginLeft: `${depth * 16}px` }} className={`flex justify-between items-center p-1.5 bg-[#f8f9ff] border border-[#e2e8f0]/60 rounded hover:border-[#006a61]/35 ${depth > 0 ? 'text-xs border-dashed' : ''}`}>
-                          <span className="text-xs font-semibold text-[#0b1c30] flex items-center gap-1">
-                            {depth > 0 && <span className="text-gray-400">↳</span>}
-                            {c.name}
-                          </span>
-                          <button 
-                            type="button"
-                            onClick={() => handleDeleteCategory(c.id)}
-                            className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/50 rounded transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-[10px] text-[#7c839b] font-semibold italic text-center py-4">No categories configured</p>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Expense Categories */}
-              <div className="space-y-2">
-                <h4 className="text-[10px] font-bold text-[#006a61] uppercase tracking-wider border-b pb-1">Expense Categories</h4>
-                <div className="space-y-1.5 max-h-[250px] overflow-y-auto pr-1">
-                  {(() => {
-                    const expCats = categories.filter(c => c.type === 'Expense');
-                    const tree = buildCategoryTree(expCats);
-                    const flat = flattenCategoryTree(tree);
-                    return flat.length > 0 ? (
-                      flat.map(({ category: c, depth }) => (
-                        <div key={c.id} style={{ marginLeft: `${depth * 16}px` }} className={`flex justify-between items-center p-1.5 bg-[#f8f9ff] border border-[#e2e8f0]/60 rounded hover:border-[#006a61]/35 ${depth > 0 ? 'text-xs border-dashed' : ''}`}>
-                          <span className="text-xs font-semibold text-[#0b1c30] flex items-center gap-1">
-                            {depth > 0 && <span className="text-gray-400">↳</span>}
-                            {c.name}
-                          </span>
-                          <button 
-                            type="button"
-                            onClick={() => handleDeleteCategory(c.id)}
-                            className="p-1 text-[#7c839b] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/50 rounded transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-[10px] text-[#7c839b] font-semibold italic text-center py-4">No categories configured</p>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* Change Account Password Section */}
         <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm overflow-hidden mt-6">
@@ -870,6 +959,43 @@ export default function Settings() {
             </div>
           </form>
         </section>
+
+        {/* Dedicated Account Session & Logout Section */}
+        <section id="logout-settings-section" className="bg-white rounded-xl border border-rose-200/80 shadow-xs overflow-hidden">
+          <div className="p-5 border-b border-rose-100 bg-rose-50/50 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-rose-100 text-rose-700 rounded-lg">
+                <LogOut size={18} />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm text-slate-900">Account Session & Logout</h3>
+                <p className="text-xs text-slate-500">Manage active authentication session and sign out securely</p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-full tracking-wider">
+              Session Active
+            </span>
+          </div>
+
+          <div className="p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200/80 rounded-xl">
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-800">Logged in as: <span className="text-[#006a61] font-extrabold">{user?.name || user?.username || 'Current User'}</span></p>
+                <p className="text-[11px] text-slate-500 font-semibold">Role: <span className="uppercase text-slate-700">{user?.role || 'Owner'}</span> {user?.businessName ? `| Business: ${user.businessName}` : ''}</p>
+                <p className="text-[11px] text-slate-400">Signing out will terminate your current session on this terminal.</p>
+              </div>
+
+              <button
+                id="settings-logout-btn"
+                onClick={handleLogout}
+                className="w-full sm:w-auto px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white font-sans text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              >
+                <Power size={15} />
+                <span>Log Out of Workspace</span>
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
 
       {/* Right Column details */}
@@ -898,6 +1024,104 @@ export default function Settings() {
           </div>
         </div>
       </aside>
+
+      {/* WhatsApp Connection Modal Overlay */}
+      {showWaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full p-6 space-y-5"
+          >
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-[#25d366]/15 rounded-xl text-[#25d366]">
+                  <MessageSquare size={20} />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-base text-[#0b1c30]">Connect WhatsApp Business</h3>
+                  <p className="text-xs text-slate-500">BillCom Meta Embedded Signup & Onboarding</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWaModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Option 1: Live Meta Embedded Signup */}
+              <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className="text-[#25d366]" /> Option A: Meta Embedded Signup (Live)
+                  </span>
+                  <span className="px-2 py-0.5 text-[9px] font-bold uppercase bg-emerald-200 text-emerald-800 rounded">Official</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 leading-relaxed">
+                  Opens Facebook Login dialog to connect your WABA and authorize BillCom automatically.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleLaunchMetaSDK}
+                  disabled={isWaConnecting}
+                  className="w-full py-2.5 bg-[#25d366] hover:bg-[#22c55e] text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isWaConnecting ? <Loader2 size={14} className="animate-spin" /> : <Link size={14} />}
+                  <span>Launch Meta Embedded Signup</span>
+                </button>
+              </div>
+
+              {/* Option 2: 1-Click Demo Sandbox WABA */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Tag size={14} className="text-[#006f66]" /> Option B: Instant Demo WABA (Development)
+                  </span>
+                  <span className="px-2 py-0.5 text-[9px] font-bold uppercase bg-blue-100 text-blue-800 rounded">1-Click Test</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Connects a pre-configured sandbox WABA with auto-provisioned invoice templates for instant testing.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleConnectDemoWaba}
+                  disabled={isWaConnecting}
+                  className="w-full py-2.5 bg-[#006f66] hover:bg-[#005a53] text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isWaConnecting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  <span>Connect Demo WABA Sandbox</span>
+                </button>
+              </div>
+
+              {/* Option 3: Manual Authorization Code */}
+              <form onSubmit={handleConnectManualCode} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <span className="text-xs font-bold text-slate-800">Option C: Manual Meta Code</span>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualCodeInput}
+                    onChange={(e) => setManualCodeInput(e.target.value)}
+                    placeholder="Paste Meta OAuth Code"
+                    className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isWaConnecting || !manualCodeInput.trim()}
+                    className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer"
+                  >
+                    Submit
+                  </button>
+                </div>
+              </form>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 }

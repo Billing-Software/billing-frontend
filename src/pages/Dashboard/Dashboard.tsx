@@ -14,6 +14,7 @@ import {
 import { dashboardService } from '../../services/dashboard.service';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
+import { useBusinessConfig } from '../../context/BusinessConfigContext';
 
 interface DashboardProps {
   onNavigateToBilling: () => void;
@@ -30,6 +31,7 @@ export default function Dashboard({
 }: DashboardProps) {
   const { currentUser } = useAuth();
   const { showToast } = useToast();
+  const { config, t } = useBusinessConfig();
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedRep, setSelectedRep] = useState<string>('7days');
@@ -130,10 +132,51 @@ export default function Dashboard({
             onClick={onNavigateToBilling}
             className="bg-[#006a61] text-white font-sans text-xs font-semibold px-4 py-2 rounded-lg hover:bg-opacity-90 shadow-sm transition-all cursor-pointer"
           >
-            New Quick Bill
+            + New Quick {t('invoice')}
           </button>
         </div>
       </div>
+
+      {/* Progressive Onboarding Setup Checklist Banner */}
+      {config && config.onboardingProgressPercentage < 100 && (
+        <div className="bg-gradient-to-r from-[#006a61] to-[#0b1c30] text-white rounded-2xl p-6 shadow-lg relative overflow-hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Sparkles className="text-[#86f2e4]" size={20} />
+                <h3 className="font-display font-extrabold text-lg text-white">Welcome to SmartBilling 👋</h3>
+              </div>
+              <p className="text-xs text-[#86f2e4] font-sans font-medium">
+                Your business is set up for <strong>{config.businessType}</strong>. Let's finish your initial configuration:
+              </p>
+            </div>
+            <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10">
+              <div className="text-right">
+                <span className="text-[10px] text-slate-300 uppercase font-bold tracking-wider">Setup Status</span>
+                <p className="text-sm font-extrabold text-white font-mono">{config.onboardingProgressPercentage}% Complete</p>
+              </div>
+              <div className="w-12 bg-white/20 h-2 rounded-full overflow-hidden">
+                <div className="bg-[#86f2e4] h-full transition-all duration-500" style={{ width: `${config.onboardingProgressPercentage}%` }}></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/10 text-xs font-semibold">
+            {config.completedSetupSteps.map((step, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-[#86f2e4]">
+                <span>✓</span>
+                <span className="line-through opacity-80">{step}</span>
+              </div>
+            ))}
+            {config.pendingSetupSteps.map((step, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-white/90">
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span>{step}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Metrics Row (Bento Grid) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

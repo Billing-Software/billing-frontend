@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, Grid, Share2, Plus, Menu, Building2 } from 'lucide-react';
+import { Search, Bell, Grid, Share2, Plus, Menu, Building2, LogOut } from 'lucide-react';
 import { User, Branch } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import logoText from '../../assets/BillCom-text.svg';
@@ -128,7 +128,12 @@ export default function Header({
  
         {/* User Portrait preview */}
         {user && (
-          <div className="flex items-center gap-2 md:border-l md:border-[#e2e8f0]/40 md:pl-3">
+          <div className="flex items-center gap-2.5 md:border-l md:border-[#e2e8f0] md:pl-3">
+            <div className="hidden sm:flex flex-col items-end text-right">
+              <span className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[120px]">{user.name || user.username}</span>
+              <span className="text-[10px] text-slate-500 font-semibold leading-none">{user.role}</span>
+            </div>
+
             {user?.avatarUrl && typeof user.avatarUrl === 'string' && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
               <img 
                 referrerPolicy="no-referrer"

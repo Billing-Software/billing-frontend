@@ -1,11 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, Trash2, Edit2, ArrowUpDown, Loader2, Package } from 'lucide-react';
+import { 
+  Search, 
+  Plus, 
+  Trash2, 
+  Edit2, 
+  ArrowUpDown, 
+  Loader2, 
+  Package, 
+  FolderPlus, 
+  Tag, 
+  X, 
+  Layers, 
+  FolderTree,
+  CheckCircle2
+} from 'lucide-react';
 import { Service } from '../../types';
 import { serviceCatalogService } from '../../services/service.service';
 import { categoryService, Category } from '../../services/category.service';
 import { apiClient } from '../../services/api.client';
 import { useToast } from '../../hooks/useToast';
+
+interface CategoryNode {
+  category: Category;
+  children: CategoryNode[];
+}
+
+function buildCategoryTree(flatCats: Category[]): CategoryNode[] {
+  const map: { [id: number]: CategoryNode } = {};
+  flatCats.forEach(c => { map[c.id] = { category: c, children: [] }; });
+  const roots: CategoryNode[] = [];
+  flatCats.forEach(c => {
+    if (c.parentId && map[c.parentId]) {
+      map[c.parentId].children.push(map[c.id]);
+    } else {
+      roots.push(map[c.id]);
+    }
+  });
+  return roots;
+}
+
+function flattenCategoryTree(nodes: CategoryNode[], depth = 0, result: { category: Category; depth: number }[] = []): { category: Category; depth: number }[] {
+  nodes.forEach(node => {
+    result.push({ category: node.category, depth });
+    if (node.children.length > 0) {
+      flattenCategoryTree(node.children, depth + 1, result);
+    }
+  });
+  return result;
+}
 
 export default function Services() {
   const { showToast } = useToast();
@@ -16,6 +59,13 @@ export default function Services() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  
+  // Category Manager Modal state
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
+  const [newCatName, setNewCatName] = useState<string>('');
+  const [newCatType, setNewCatType] = useState<string>('Service');
+  const [newCatParentId, setNewCatParentId] = useState<number | null>(null);
+  const [isSubmittingCat, setIsSubmittingCat] = useState<boolean>(false);
   
   // Create / Edit modal/form states
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
@@ -29,6 +79,7 @@ export default function Services() {
   const [formTax, setFormTax] = useState<number>(5.0);
   const [formStatus, setFormStatus] = useState<'Active' | 'Inactive'>('Active');
   const [formImageUrl, setFormImageUrl] = useState<string>('');
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [dbCategories, setDbCategories] = useState<Category[]>([]);
 
   // Sorting
@@ -50,6 +101,7 @@ export default function Services() {
   const fetchCategories = async () => {
     try {
       const list = await categoryService.getAll();
+      setAllCategories(list);
       const serviceCats = list.filter(c => c.type === 'Service');
       setDbCategories(serviceCats);
       if (serviceCats.length > 0 && !editingService) {
@@ -64,6 +116,39 @@ export default function Services() {
     fetchServices();
     fetchCategories();
   }, []);
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+
+    try {
+      setIsSubmittingCat(true);
+      await categoryService.create({
+        name: newCatName.trim(),
+        type: newCatType,
+        parentId: newCatParentId || undefined
+      });
+      showToast(`Category "${newCatName}" created successfully!`, "success");
+      setNewCatName('');
+      setNewCatParentId(null);
+      await fetchCategories();
+    } catch (err: any) {
+      showToast("Error creating category: " + (err.response?.data?.message || err.message), "error");
+    } finally {
+      setIsSubmittingCat(false);
+    }
+  };
+
+  const handleDeleteCategory = async (catId: number, catName: string) => {
+    if (!window.confirm(`Are you sure you want to delete category "${catName}"?`)) return;
+    try {
+      await categoryService.delete(catId);
+      showToast(`Category "${catName}" removed successfully.`, "success");
+      await fetchCategories();
+    } catch (err: any) {
+      showToast("Error deleting category: " + (err.response?.data?.message || err.message), "error");
+    }
+  };
 
   // Categories list derived dynamically from DB + current services
   const categories = Array.from(new Set([
@@ -199,6 +284,185 @@ export default function Services() {
           <span>Add New Service</span>
         </button>
       </div>
+
+      {/* Mobile-Style Category Navigation Tabs & Manager Bar */}
+      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          <button
+            onClick={() => setSelectedCategory('')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              !selectedCategory 
+                ? 'bg-[#006a61] text-white shadow-sm' 
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <Layers size={13} />
+            <span>All Services</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${!selectedCategory ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+              {services.length}
+            </span>
+          </button>
+
+          {categories.map((catName) => {
+            const count = services.filter(s => s.category === catName).length;
+            const isSelected = selectedCategory === catName;
+            return (
+              <button
+                key={catName}
+                onClick={() => setSelectedCategory(isSelected ? '' : catName)}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  isSelected 
+                    ? 'bg-[#006a61] text-white shadow-sm' 
+                    : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Tag size={12} className={isSelected ? 'text-white' : 'text-[#006a61]'} />
+                <span>{catName}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Manage Categories Action Button */}
+        <button
+          onClick={() => setIsCategoryModalOpen(true)}
+          className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[#006a61] rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+        >
+          <FolderPlus size={14} />
+          <span>Category Manager</span>
+        </button>
+      </div>
+
+      {/* Category Manager Pop-up Modal */}
+      <AnimatePresence>
+        {isCategoryModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-4 p-6"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <FolderTree className="text-[#006a61]" size={20} />
+                  <h3 className="font-display font-extrabold text-base text-slate-900">Manage Service Categories</h3>
+                </div>
+                <button
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Category Add Form */}
+              <form onSubmit={handleAddCategory} className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
+                <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Add New Category</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Category Name</label>
+                    <input
+                      type="text"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      placeholder="e.g. Facial, Diagnostics, Spa"
+                      className="w-full text-xs font-semibold p-2 bg-white border border-slate-300 rounded-lg outline-none focus:border-[#006a61]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Type</label>
+                    <select
+                      value={newCatType}
+                      onChange={(e) => setNewCatType(e.target.value)}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-slate-300 rounded-lg h-9 outline-none focus:border-[#006a61]"
+                    >
+                      <option value="Service">Service</option>
+                      <option value="Inventory">Inventory</option>
+                      <option value="Expense">Expense</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Parent Category (Optional)</label>
+                    <select
+                      value={newCatParentId || ''}
+                      onChange={(e) => setNewCatParentId(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full text-xs font-semibold p-2 bg-white border border-slate-300 rounded-lg h-9 outline-none focus:border-[#006a61]"
+                    >
+                      <option value="">No Parent (Top Level)</option>
+                      {(() => {
+                        const filteredCats = allCategories.filter(c => c.type === newCatType);
+                        const tree = buildCategoryTree(filteredCats);
+                        const flat = flattenCategoryTree(tree);
+                        return flat.map(({ category: c, depth }) => (
+                          <option key={c.id} value={c.id}>
+                            {'\u00A0'.repeat(depth * 3) + (depth > 0 ? '↳ ' : '') + c.name}
+                          </option>
+                        ));
+                      })()}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={isSubmittingCat || !newCatName.trim()}
+                    className="px-4 py-2 bg-[#006a61] hover:bg-[#004d47] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isSubmittingCat ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                    <span>Add Category</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Current Categories List */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Active Service Categories</h4>
+                <div className="max-h-[200px] overflow-y-auto space-y-1.5 pr-1 border border-slate-200 rounded-xl p-2 bg-slate-50/50">
+                  {(() => {
+                    const serviceCats = allCategories.filter(c => c.type === 'Service');
+                    const tree = buildCategoryTree(serviceCats);
+                    const flat = flattenCategoryTree(tree);
+                    return flat.length > 0 ? (
+                      flat.map(({ category: c, depth }) => (
+                        <div key={c.id} style={{ marginLeft: `${depth * 16}px` }} className="flex justify-between items-center p-2 bg-white border border-slate-200 rounded-lg shadow-2xs hover:border-[#006a61]/40">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                            {depth > 0 && <span className="text-slate-400">↳</span>}
+                            {c.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(c.id, c.name)}
+                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete category"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-400 text-center py-4">No service categories defined yet.</p>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Interactive Form Drawer */}
       <AnimatePresence>
