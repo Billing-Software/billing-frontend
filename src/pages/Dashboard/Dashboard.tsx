@@ -144,7 +144,7 @@ export default function Dashboard({
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Sparkles className="text-[#86f2e4]" size={20} />
-                <h3 className="font-display font-extrabold text-lg text-white">Welcome to SmartBilling 👋</h3>
+                <h3 className="font-display font-extrabold text-lg text-white">Welcome to BillCom 👋</h3>
               </div>
               <p className="text-xs text-[#86f2e4] font-sans font-medium">
                 Your business is set up for <strong>{config.businessType}</strong>. Let's finish your initial configuration:

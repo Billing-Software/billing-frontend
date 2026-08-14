@@ -122,7 +122,7 @@ export default function Billing() {
 
   // Load persistent cart state from local storage on load
   useEffect(() => {
-    const saved = localStorage.getItem('smartbill_pos_cart');
+    const saved = localStorage.getItem('billcom_pos_cart') || localStorage.getItem('smartbill_pos_cart');
     if (saved) {
       try {
         setCart(JSON.parse(saved));
@@ -134,7 +134,7 @@ export default function Billing() {
 
   // Sync cart mutations to local storage immediately
   useEffect(() => {
-    localStorage.setItem('smartbill_pos_cart', JSON.stringify(cart));
+    localStorage.setItem('billcom_pos_cart', JSON.stringify(cart));
   }, [cart]);
 
 

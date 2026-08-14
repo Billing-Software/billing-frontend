@@ -170,7 +170,7 @@ export default function Invoices() {
         <body onload="window.print(); window.close();">
           <div style="max-width: 300px; margin: 0 auto; font-family: monospace;">
             <div style="text-align: center; margin-bottom: 16px;">
-              <h2 style="margin: 0; font-size: 18px;">${bill.branchName || 'SmartBill Pro'}</h2>
+              <h2 style="margin: 0; font-size: 18px;">${bill.branchName || 'BillCom POS'}</h2>
               <p style="margin: 4px 0 0; font-size: 11px;">POS Thermal Billing Receipt</p>
             </div>
             
@@ -574,7 +574,7 @@ export default function Invoices() {
               <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
                 {/* Branch Branding */}
                 <div className="text-center">
-                  <h3 className="font-display font-black text-lg text-[#006a61]">{selectedBill.branchName || 'SmartBill Pro'}</h3>
+                  <h3 className="font-display font-black text-lg text-[#006a61]">{selectedBill.branchName || 'BillCom POS'}</h3>
                   <p className="text-[10px] text-[#7c839b] font-semibold mt-1">POS INVOICING RECEIPT</p>
                 </div>
 

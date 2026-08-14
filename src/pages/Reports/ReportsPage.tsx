@@ -78,7 +78,7 @@ export default function ReportsPage() {
 
     const monthName = months.find(m => m.value === selectedMonth)?.label || 'August';
     const periodStr = `${monthName} ${selectedYear}`;
-    const businessName = config?.businessName || 'SmartBill Pro Merchant';
+    const businessName = config?.businessName || 'BillCom Merchant';
     const gstIn = report.gstIn || config?.gstIn || 'Unregistered / Non-GST';
     const gstScheme = config?.gstScheme || 'Regular';
 

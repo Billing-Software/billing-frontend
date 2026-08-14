@@ -88,7 +88,7 @@ export default function AppRoutes({
   };
 
   const handleQuickShare = () => {
-    const shareMessage = `SmartBill Pro Gateway for ${currentBranch?.name || 'Default'} Branch is online: All cash registers are fully operational. Current revenue levels are green.`;
+    const shareMessage = `BillCom POS Gateway for ${currentBranch?.name || 'Default'} Branch is online: All cash registers are fully operational. Current revenue levels are green.`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(shareMessage);
       showToast("Access webhook message copied to workspace clipboard!", "success");

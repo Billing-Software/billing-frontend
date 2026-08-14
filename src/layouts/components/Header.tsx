@@ -44,7 +44,7 @@ export default function Header({
 
         {/* Brand Logo for Mobile Only */}
         <div className="md:hidden flex items-center gap-1.5">
-          <img src={logoText} alt="SmartBill Pro" className="h-6 object-contain" />
+          <img src={logoText} alt="BillCom POS" className="h-6 object-contain" />
         </div>
 
         {/* Global Search Bar (Visible except on very small mobile) */}

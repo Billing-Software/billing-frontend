@@ -115,7 +115,7 @@ export default function SuperAdminDashboard() {
             SUPER ADMIN
           </div>
           <div>
-            <h1 className="font-display font-extrabold text-lg leading-none">SmartBill Pro Host Operator</h1>
+            <h1 className="font-display font-extrabold text-lg leading-none">BillCom Host Operator</h1>
             <p className="text-[10px] text-slate-400 font-medium mt-1">Multi-Tenant Global Portal</p>
           </div>
         </div>
@@ -478,7 +478,7 @@ export default function SuperAdminDashboard() {
 
       {/* Footer Branding */}
       <footer className="py-4 border-t border-slate-200 text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-white">
-        SmartBill Pro SaaS Host Administrator Portal
+        BillCom SaaS Host Administrator Portal
       </footer>
     </div>
   );

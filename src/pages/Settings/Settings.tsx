@@ -753,7 +753,7 @@ export default function Settings() {
                 <textarea 
                   value={receiptHeader}
                   onChange={(e) => setReceiptHeader(e.target.value)}
-                  placeholder="e.g. Welcome to SmartBill Retail Spa! Visit again."
+                  placeholder="e.g. Welcome to BillCom Retail Spa! Visit again."
                   className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none h-16 resize-none"
                 />
               </div>

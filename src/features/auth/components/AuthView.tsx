@@ -278,7 +278,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
     <div id="auth-terminal-root" className="w-full max-w-lg mx-auto">
       {/* Main Branding Logo */}
       <div className="text-center mb-6">
-        <img src={logo} alt="SmartBill Pro" className="w-56 mx-auto mb-2 object-contain" />
+        <img src={logo} alt="BillCom POS" className="w-56 mx-auto mb-2 object-contain" />
         <p className="font-sans text-[10px] text-[#7c839b] font-semibold uppercase tracking-wider">Multi-Tenant Billing Solution</p>
       </div>
 
@@ -500,7 +500,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
                     <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]" />
                     <input 
                       type="email" 
-                      placeholder={isStaff ? 'staff@smartbill.com' : 'john@example.com'}
+                      placeholder={isStaff ? 'staff@billcom.com' : 'john@example.com'}
                       value={loginEmail}
                       onChange={(e) => setLoginEmail(e.target.value)}
                       className="w-full text-xs font-semibold pl-9 pr-4 py-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] focus:ring-2 focus:ring-[#006a61]/10 outline-none transition-all"
@@ -928,7 +928,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
 
             {authMode === 'login' && (
               <div className="text-center pt-2.5 border-t border-[#f1f5f9] w-full">
-                <span className="text-[11px] text-slate-400 font-semibold">New to SmartBill Pro? </span>
+                <span className="text-[11px] text-slate-400 font-semibold">New to BillCom? </span>
                 <a 
                   href={`${MARKETING_URL}/#/pricing`}
                   className="text-[11px] text-[#006a61] hover:underline font-bold transition-all"

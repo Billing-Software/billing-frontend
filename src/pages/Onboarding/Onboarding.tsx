@@ -139,13 +139,13 @@ export default function Onboarding() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-slate-800 p-6">
       {/* Brand logo header */}
       <div className="text-center mb-6">
-        <img src={logo} alt="SmartBill Pro" className="w-56 mx-auto mb-2 object-contain" />
+        <img src={logo} alt="BillCom POS" className="w-56 mx-auto mb-2 object-contain" />
         <p className="font-sans text-[10px] text-[#7c839b] font-semibold uppercase tracking-wider">Configure Workspace Settings</p>
       </div>
 
       <div className="w-full max-w-xl bg-white rounded-2xl border border-slate-200 shadow-md p-6 relative overflow-hidden">
         <div className="text-center mb-6 space-y-1">
-          <h3 className="font-semibold text-lg text-slate-900">Welcome to SmartBill Pro!</h3>
+          <h3 className="font-semibold text-lg text-slate-900">Welcome to BillCom POS!</h3>
           <p className="text-xs text-slate-400 font-medium">Let's finish setting up your business account details.</p>
         </div>
 

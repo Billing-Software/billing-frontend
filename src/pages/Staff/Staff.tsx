@@ -300,7 +300,7 @@ export default function Staff() {
                   type="email" 
                   value={contact} 
                   onChange={(e) => setContact(e.target.value)}
-                  placeholder="e.g. staff@smartbill.com" 
+                  placeholder="e.g. staff@billcom.com" 
                   className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
                   required
                 />

@@ -52,7 +52,7 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
       <div>
         {/* Branding */}
         <div className="mb-4 px-2 flex flex-col items-start gap-1">
-          <img src={logoText} alt="SmartBill Pro" className="h-8 object-contain" />
+          <img src={logoText} alt="BillCom POS" className="h-8 object-contain" />
           <div className="flex items-center gap-1 bg-[#006a61]/10 text-[#006a61] px-2 py-0.5 rounded-full text-[10px] font-bold mt-1">
             <BadgeCheck size={11} />
             <span className="truncate max-w-[170px]" title={businessTypeBadge}>{businessTypeBadge}</span>

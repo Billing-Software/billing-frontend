@@ -129,7 +129,7 @@ export default function MainLayout({
               <div>
                 <div className="flex justify-between items-center mb-6 border-b pb-4">
                   <div className="flex items-center gap-2">
-                    <img src={logoText} alt="SmartBill Pro" className="h-6 object-contain" />
+                    <img src={logoText} alt="BillCom POS" className="h-6 object-contain" />
                   </div>
                   <button 
                     onClick={() => setIsMobileMenuOpen(false)}
