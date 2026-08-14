@@ -20,6 +20,7 @@ import { useToast } from '../hooks/useToast';
 import Onboarding from '../pages/Onboarding/Onboarding';
 import SuperAdminDashboard from '../pages/SuperAdmin/SuperAdminDashboard';
 import Branches from '../pages/Branches/Branches';
+import { useBusinessConfig } from '../context/BusinessConfigContext';
 
 interface AppRoutesProps {
   searchText: string;
@@ -75,6 +76,7 @@ export default function AppRoutes({
 }: AppRoutesProps) {
   const { currentUser, currentBranch, setCurrentBranch } = useAuth();
   const { showToast } = useToast();
+  const { hasFeature } = useBusinessConfig();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -151,16 +153,16 @@ export default function AppRoutes({
             />
           )
         } />
-        <Route path="billing" element={<Billing />} />
-        <Route path="services" element={<Services />} />
-        <Route path="customers" element={<Customers />} />
-        <Route path="inventory" element={<Inventory />} />
-        <Route path="invoices" element={<Invoices />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="staff" element={currentUser?.role === 'Owner' ? <Staff /> : <Navigate to="/dashboard" replace />} />
-        <Route path="branches" element={currentUser?.role === 'Owner' ? <Branches /> : <Navigate to="/dashboard" replace />} />
-        <Route path="settings" element={currentUser?.role === 'Owner' ? <Settings /> : <Navigate to="/dashboard" replace />} />
-        <Route path="expenses" element={currentUser?.role === 'Owner' ? <Expenses /> : <Navigate to="/dashboard" replace />} />
+        <Route path="billing" element={hasFeature('billing') ? <Billing /> : <Navigate to="/dashboard" replace />} />
+        <Route path="services" element={hasFeature('services') ? <Services /> : <Navigate to="/dashboard" replace />} />
+        <Route path="customers" element={hasFeature('customers') ? <Customers /> : <Navigate to="/dashboard" replace />} />
+        <Route path="inventory" element={hasFeature('inventory') ? <Inventory /> : <Navigate to="/dashboard" replace />} />
+        <Route path="invoices" element={hasFeature('invoices') ? <Invoices /> : <Navigate to="/dashboard" replace />} />
+        <Route path="reports" element={hasFeature('reports') ? <ReportsPage /> : <Navigate to="/dashboard" replace />} />
+        <Route path="staff" element={hasFeature('staff_manage') ? <Staff /> : <Navigate to="/dashboard" replace />} />
+        <Route path="branches" element={hasFeature('branches') ? <Branches /> : <Navigate to="/dashboard" replace />} />
+        <Route path="settings" element={hasFeature('settings') ? <Settings /> : <Navigate to="/dashboard" replace />} />
+        <Route path="expenses" element={hasFeature('expenses') ? <Expenses /> : <Navigate to="/dashboard" replace />} />
         <Route path="help" element={<Help />} />
         
         {/* Redirect from root or invalid paths */}
@@ -177,13 +179,16 @@ function AutoLogin() {
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    const token = searchParams.get('token');
-    const username = searchParams.get('username');
-    const email = searchParams.get('email');
-    const role = searchParams.get('role');
-    const businessId = searchParams.get('businessId');
-    const businessName = searchParams.get('businessName');
-    const isNew = searchParams.get('new') === 'true';
+    const rawSearch = window.location.search || (window.location.hash.includes('?') ? window.location.hash.substring(window.location.hash.indexOf('?')) : '');
+    const urlParams = new URLSearchParams(rawSearch);
+
+    const token = searchParams.get('token') || urlParams.get('token');
+    const username = searchParams.get('username') || urlParams.get('username');
+    const email = searchParams.get('email') || urlParams.get('email');
+    const role = searchParams.get('role') || urlParams.get('role');
+    const businessId = searchParams.get('businessId') || urlParams.get('businessId');
+    const businessName = searchParams.get('businessName') || urlParams.get('businessName');
+    const isNew = (searchParams.get('new') || urlParams.get('new')) === 'true';
 
     if (token && username && email && role && businessId && businessName) {
       const user = {
@@ -200,7 +205,13 @@ function AutoLogin() {
       setCurrentUser(user);
       navigate('/dashboard', { replace: true });
     } else {
-      navigate('/login', { replace: true });
+      // If auth_data is already set in localStorage by AuthProvider initializer, navigate to dashboard
+      const existingAuth = localStorage.getItem('auth_data');
+      if (existingAuth) {
+        navigate('/dashboard', { replace: true });
+      } else {
+        navigate('/login', { replace: true });
+      }
     }
   }, [searchParams, setCurrentUser, navigate]);
 

@@ -16,6 +16,38 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    // 1. Inspect URL parameters (both search query and hash query string) for autologin tokens
+    try {
+      const searchStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.substring(window.location.hash.indexOf('?')) : '');
+      if (searchStr) {
+        const urlParams = new URLSearchParams(searchStr);
+        const token = urlParams.get('token');
+        const username = urlParams.get('username');
+        const email = urlParams.get('email');
+        const role = urlParams.get('role');
+        const businessId = urlParams.get('businessId');
+        const businessName = urlParams.get('businessName');
+
+        if (token && username && email && role && businessId && businessName) {
+          const user: User = {
+            username,
+            email,
+            role,
+            businessId: parseInt(businessId, 10),
+            businessName,
+            token
+          };
+          if (urlParams.get('new') === 'true') {
+            localStorage.setItem('onboarding_pending', 'true');
+          }
+          localStorage.setItem('auth_data', JSON.stringify(user));
+          return user;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse autologin query params in AuthProvider:', e);
+    }
+
     const data = localStorage.getItem('auth_data');
     if (data) {
       try {

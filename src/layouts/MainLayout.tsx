@@ -53,17 +53,16 @@ export default function MainLayout({
   const { t, hasFeature } = useBusinessConfig();
 
   const mobileMenuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },
-    { id: 'billing', label: `New ${t('invoice')}`, icon: Receipt, show: true },
-    { id: 'invoices', label: t('invoice', true), icon: FileText, show: true },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: hasFeature('dashboard') },
+    { id: 'billing', label: `New ${t('invoice')}`, icon: Receipt, show: hasFeature('billing') },
+    { id: 'invoices', label: t('invoice', true), icon: FileText, show: hasFeature('invoices') },
     { id: 'customers', label: t('customer', true), icon: Users, show: hasFeature('customers') },
     { id: 'services', label: t('service', true), icon: Sparkles, show: hasFeature('services') },
     { id: 'inventory', label: t('product', true), icon: Boxes, show: hasFeature('inventory') && hasFeature('products') },
-    ...(currentUser?.role === 'Owner' ? [
-      { id: 'branches', label: 'Branches', icon: Building2, show: true },
-      { id: 'staff', label: t('staff', true), icon: SquareUser, show: hasFeature('staff') },
-      { id: 'settings', label: 'Settings', icon: Settings, show: true },
-    ] : [])
+    { id: 'branches', label: 'Branches', icon: Building2, show: hasFeature('branches') },
+    { id: 'staff', label: t('staff', true), icon: SquareUser, show: hasFeature('staff_manage') },
+    { id: 'expenses', label: 'Expenses', icon: Settings, show: hasFeature('expenses') },
+    { id: 'settings', label: 'Settings', icon: Settings, show: hasFeature('settings') },
   ].filter(item => item.show);
 
   return (
