@@ -208,6 +208,7 @@ export default function Settings() {
     onSuccess: async (result) => {
       try {
         setIsWaConnecting(true);
+        showToast('Exchanging Meta code and retrieving WABA details...', 'info');
         const status = await whatsAppService.connect({
           code: result.code,
           wabaId: result.wabaId,
@@ -215,6 +216,7 @@ export default function Settings() {
           displayPhoneNumber: result.displayPhoneNumber,
         });
         setWaStatus(status);
+        setShowWaModal(false);
         showToast('WhatsApp Business connected successfully via Meta Embedded Signup!', 'success');
       } catch (err: any) {
         showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
