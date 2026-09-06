@@ -13,13 +13,16 @@ import {
   X, 
   Layers, 
   FolderTree,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { Service } from '../../types';
 import { serviceCatalogService } from '../../services/service.service';
 import { categoryService, Category } from '../../services/category.service';
 import { apiClient } from '../../services/api.client';
 import { useToast } from '../../hooks/useToast';
+import HSNSacSearchModal from '../../components/tax/HSNSacSearchModal';
 
 interface CategoryNode {
   category: Category;
@@ -79,8 +82,19 @@ export default function Services() {
   const [formTax, setFormTax] = useState<number>(5.0);
   const [formStatus, setFormStatus] = useState<'Active' | 'Inactive'>('Active');
   const [formImageUrl, setFormImageUrl] = useState<string>('');
+  const [formItemType, setFormItemType] = useState<'Service' | 'Product'>('Service');
+  const [formHsnSac, setFormHsnSac] = useState<string>('');
+  const [isHsnModalOpen, setIsHsnModalOpen] = useState<boolean>(false);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [dbCategories, setDbCategories] = useState<Category[]>([]);
+
+  // Auto-generate SKU helper
+  const handleAutoGenerateSku = () => {
+    const prefix = formItemType === 'Service' ? 'SRV' : 'PRD';
+    const cleanName = (formName || 'ITEM').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'GEN';
+    const random = Math.floor(1000 + Math.random() * 9000);
+    setFormSku(`${prefix}-${cleanName}-${random}`);
+  };
 
   // Sorting
   const [sortField, setSortField] = useState<'name' | 'basePrice'>('name');
@@ -159,33 +173,46 @@ export default function Services() {
   // Handle Create or Update save
   const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName || !formSku) return;
+    if (!formName) return;
+
+    let finalSku = formSku.trim();
+    if (!finalSku) {
+      const prefix = formItemType === 'Service' ? 'SRV' : 'PRD';
+      const cleanName = (formName || 'ITEM').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'GEN';
+      const random = Math.floor(1000 + Math.random() * 9000);
+      finalSku = `${prefix}-${cleanName}-${random}`;
+      setFormSku(finalSku);
+    }
 
     try {
       if (editingService) {
         // Edit mode
         await serviceCatalogService.update(editingService.id, {
           name: formName,
-          sku: formSku,
+          sku: finalSku.toUpperCase(),
           category: formCategory,
           basePrice: Number(formPrice),
           taxRate: Number(formTax),
           status: formStatus,
-          imageUrl: formImageUrl || null
-        });
+          imageUrl: formImageUrl || null,
+          hsnSac: formHsnSac || undefined,
+          itemType: formItemType
+        } as any);
         showToast("Service catalog updated successfully!", "success");
       } else {
         // Add mode
         await serviceCatalogService.create({
           name: formName,
-          sku: formSku.toUpperCase(),
+          sku: finalSku.toUpperCase(),
           category: formCategory,
           basePrice: Number(formPrice),
           taxRate: Number(formTax),
           status: formStatus,
-          imageUrl: formImageUrl || null
-        });
-        showToast("New service added successfully!", "success");
+          imageUrl: formImageUrl || null,
+          hsnSac: formHsnSac || undefined,
+          itemType: formItemType
+        } as any);
+        showToast(`New ${formItemType.toLowerCase()} added successfully!`, "success");
       }
 
       // Reset Form & Reload
@@ -198,6 +225,8 @@ export default function Services() {
       setFormTax(5.0);
       setFormStatus('Active');
       setFormImageUrl('');
+      setFormHsnSac('');
+      setFormItemType('Service');
       fetchServices();
     } catch (err: any) {
       showToast("Error saving service: " + (err.response?.data || err.message), "error");
@@ -214,6 +243,8 @@ export default function Services() {
     setFormTax(service.taxRate);
     setFormStatus(service.status);
     setFormImageUrl(service.imageUrl || '');
+    setFormHsnSac(service.hsnSac || '');
+    setFormItemType(service.itemType || 'Service');
     setIsFormOpen(true);
   };
 
@@ -471,43 +502,122 @@ export default function Services() {
             initial={{ opacity: 0, scale: 0.95, height: 0 }}
             animate={{ opacity: 1, scale: 1, height: 'auto' }}
             exit={{ opacity: 0, scale: 0.95, height: 0 }}
-            className="bg-white border rounded-lg p-5 shadow-sm relative space-y-4"
+            className="bg-white border rounded-xl p-5 shadow-sm relative space-y-4"
           >
-            <h3 className="font-display text-[#0b1c30] text-sm font-bold">
-              {editingService ? `Edit Service Status: ${editingService.sku}` : 'Add New Billable Service'}
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+              <div>
+                <h3 className="font-display text-[#0b1c30] text-sm font-bold flex items-center gap-2">
+                  <span>{editingService ? `Edit Item: ${editingService.name}` : 'Add New Billable Service / Product'}</span>
+                  <span className="text-[10px] font-bold bg-[#006a61]/10 text-[#006a61] px-2 py-0.5 rounded-full">
+                    GST Ready
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Configure statutory HSN/SAC code, GST tax slab, and pricing details</p>
+              </div>
+
+              {/* Item Type Selector */}
+              <div className="flex bg-slate-100 p-1 rounded-xl gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormItemType('Service');
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    formItemType === 'Service'
+                      ? 'bg-white text-[#006a61] shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  🛠️ Service (SAC)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormItemType('Product');
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    formItemType === 'Product'
+                      ? 'bg-white text-[#006a61] shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  📦 Product (HSN)
+                </button>
+              </div>
+            </div>
             
             <form onSubmit={handleSaveService} className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Service Name</label>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">
+                  {formItemType === 'Service' ? 'Service Name' : 'Product / Item Name'} *
+                </label>
                 <input 
                   type="text" 
                   value={formName} 
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Standard Diagnostics" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase">SKU Code</label>
-                <input 
-                  type="text" 
-                  value={formSku} 
-                  onChange={(e) => setFormSku(e.target.value)}
-                  placeholder="e.g. SKU-DIA-001" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
+                  placeholder={formItemType === 'Service' ? "e.g. Haircut & Beard Grooming" : "e.g. Premium Cotton T-Shirt"} 
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-[#c6c6cd] rounded-lg outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
 
+              {/* HSN / SAC Code with Search GST Finder button */}
               <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Category Group</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[10px] font-bold text-[#7c839b] uppercase">
+                    {formItemType === 'Service' ? 'SAC Code (Services)' : 'HSN Code (Goods)'}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsHsnModalOpen(true)}
+                    className="text-[10px] font-bold text-[#006a61] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>🔍 Search GST Finder</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={formHsnSac} 
+                    onChange={(e) => setFormHsnSac(e.target.value)}
+                    placeholder={formItemType === 'Service' ? "e.g. 999721 (Salon) or 998313 (IT)" : "e.g. 1006 (Rice) or 6109 (Apparel)"} 
+                    className="w-full text-xs font-mono font-bold p-2.5 bg-slate-50 border border-[#c6c6cd] rounded-lg outline-none focus:border-[#006a61] tracking-wider"
+                  />
+                  {formHsnSac && (
+                    <span className="absolute right-2.5 top-2.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                      {formItemType === 'Service' ? 'SAC' : 'HSN'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[10px] font-bold text-[#7c839b] uppercase">SKU Code</label>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateSku}
+                    className="text-[10px] font-bold text-[#006a61] hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <RefreshCw size={10} />
+                    <span>Auto-Gen</span>
+                  </button>
+                </div>
+                <input 
+                  type="text" 
+                  value={formSku} 
+                  onChange={(e) => setFormSku(e.target.value)}
+                  placeholder={formItemType === 'Service' ? "e.g. SRV-HC-001" : "e.g. PRD-TSH-001"} 
+                  className="w-full text-xs font-mono font-semibold p-2.5 bg-white border border-[#c6c6cd] rounded-lg outline-none focus:border-[#006a61]"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Category Group</label>
                 <select 
                   value={formCategory} 
                   onChange={(e) => setFormCategory(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-[#c6c6cd] rounded-lg h-10 outline-none focus:border-[#006a61]"
                 >
                   {dbCategories.length > 0 ? (
                     dbCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
@@ -520,43 +630,47 @@ export default function Services() {
                       <option value="Repair">Repair</option>
                       <option value="Maintenance">Maintenance</option>
                       <option value="Consulting">Consulting</option>
+                      <option value="General">General</option>
                     </>
                   )}
                 </select>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Base Price (₹)</label>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Base Price (₹) *</label>
                 <input 
                   type="number" 
                   step="0.01"
                   value={formPrice} 
                   onChange={(e) => setFormPrice(Number(e.target.value))}
-                  placeholder="e.g. 45.00" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
+                  placeholder="e.g. 250.00" 
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-[#c6c6cd] rounded-lg outline-none focus:border-[#006a61]"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Tax Percentage (%)</label>
-                <input 
-                  type="number" 
-                  step="0.1" 
-                  value={formTax} 
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">GST Tax Slab</label>
+                <select
+                  value={formTax}
                   onChange={(e) => setFormTax(Number(e.target.value))}
-                  placeholder="e.g. 5.0" 
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded outline-none focus:border-[#006a61]"
-                  required
-                />
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-[#c6c6cd] rounded-lg h-10 outline-none focus:border-[#006a61]"
+                >
+                  <option value={0}>0% (GST Exempt / Essential)</option>
+                  <option value={3}>3% (Gold / Precious Metals)</option>
+                  <option value={5}>5% (Reduced Goods / Restaurant / Food)</option>
+                  <option value={12}>12% (Standard Goods / Apparel)</option>
+                  <option value={18}>18% (Standard Services / IT / Electronics)</option>
+                  <option value={28}>28% (Luxury Goods / Heavy Appliances)</option>
+                </select>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase">Catalog Status</label>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Catalog Status</label>
                 <select 
                   value={formStatus} 
                   onChange={(e) => setFormStatus(e.target.value as 'Active' | 'Inactive')}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded h-9 outline-none focus:border-[#006a61]"
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-[#c6c6cd] rounded-lg h-10 outline-none focus:border-[#006a61]"
                 >
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
@@ -705,10 +819,11 @@ export default function Services() {
                     className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase select-none cursor-pointer hover:text-[#0b1c30]"
                   >
                     <div className="flex items-center gap-1">
-                      <span>Service Name</span>
+                      <span>Item / Service</span>
                       <ArrowUpDown size={12} />
                     </div>
                   </th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">HSN / SAC</th>
                   <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Category</th>
                   <th 
                     onClick={() => handleToggleSort('basePrice')}
@@ -719,7 +834,7 @@ export default function Services() {
                       <ArrowUpDown size={12} />
                     </div>
                   </th>
-                  <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Tax Rates</th>
+                  <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">GST Rate</th>
                   <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase">Status</th>
                   <th className="py-3 px-4 text-xs font-bold text-[#7c839b] uppercase text-right">Actions</th>
                 </tr>
@@ -751,6 +866,20 @@ export default function Services() {
                         </div>
                       </div>
                     </td>
+
+                    <td className="py-3.5 px-4">
+                      {service.hsnSac ? (
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                          service.itemType === 'Product'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                        }`}>
+                          {service.itemType === 'Product' ? 'HSN ' : 'SAC '}{service.hsnSac}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-xs font-semibold">-</span>
+                      )}
+                    </td>
                     
                     <td className="py-3.5 px-4 text-xs font-semibold text-[#45464d]">
                       <span className="bg-[#eff4ff] border px-2 py-0.5 rounded text-[10px]">
@@ -762,8 +891,10 @@ export default function Services() {
                       ₹{service.basePrice.toLocaleString()}
                     </td>
                     
-                    <td className="py-3.5 px-4 text-xs font-semibold text-[#7c839b] text-right">
-                      {service.taxRate.toFixed(1)}%
+                    <td className="py-3.5 px-4 text-xs font-semibold text-right">
+                      <span className="bg-amber-50 text-amber-800 border border-amber-200/60 px-2 py-0.5 rounded text-[10px] font-bold">
+                        {service.taxRate}% GST
+                      </span>
                     </td>
 
                     <td className="py-3.5 px-4">
@@ -824,6 +955,26 @@ export default function Services() {
           </div>
         </div>
       </div>
+
+      {/* Interactive GST Finder Modal */}
+      <HSNSacSearchModal
+        isOpen={isHsnModalOpen}
+        onClose={() => setIsHsnModalOpen(false)}
+        type={formItemType === 'Service' ? 'Services' : 'Goods'}
+        onSelect={(code, desc, gstRate) => {
+          setFormHsnSac(code);
+          setFormTax(gstRate);
+          if (!formName.trim()) {
+            setFormName(desc.split(',')[0].slice(0, 40));
+          }
+          if (!formSku.trim()) {
+            const prefix = formItemType === 'Service' ? 'SRV' : 'PRD';
+            const random = Math.floor(1000 + Math.random() * 9000);
+            setFormSku(`${prefix}-${code}-${random}`);
+          }
+          showToast(`Applied ${formItemType === 'Service' ? 'SAC' : 'HSN'} ${code} with ${gstRate}% GST`, "success");
+        }}
+      />
     </motion.div>
   );
 }

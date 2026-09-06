@@ -7,11 +7,20 @@ import {
   AlertCircle, 
   Sparkles, 
   Coins, 
-  Scissors,
-  Loader2,
-  AlertTriangle
+  Scissors, 
+  Loader2, 
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Wallet,
+  Boxes,
+  ChevronRight
 } from 'lucide-react';
 import { dashboardService } from '../../services/dashboard.service';
+import { customerService } from '../../services/customer.service';
+import { billService } from '../../services/bill.service';
+import { inventoryService } from '../../services/inventory.service';
+import { expenseService } from '../../services/expense.service';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
 import { useBusinessConfig } from '../../context/BusinessConfigContext';
@@ -20,6 +29,7 @@ interface DashboardProps {
   onNavigateToBilling: () => void;
   onNavigateToStaff: () => void;
   onNavigateToServices: () => void;
+  onNavigateToCustomers?: () => void;
   currentBranch: 'Main' | 'Downtown';
 }
 
@@ -27,6 +37,7 @@ export default function Dashboard({
   onNavigateToBilling, 
   onNavigateToStaff, 
   onNavigateToServices,
+  onNavigateToCustomers,
   currentBranch 
 }: DashboardProps) {
   const { currentUser } = useAuth();
@@ -35,12 +46,67 @@ export default function Dashboard({
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedRep, setSelectedRep] = useState<string>('7days');
+  const [heroMetrics, setHeroMetrics] = useState({
+    youllGet: 0,
+    dueCustomersCount: 0,
+    youllGive: 0,
+    cashInHand: 0,
+    cashToday: 0,
+    upiToday: 0,
+    stockValue: 0,
+    stockCount: 0
+  });
 
   const fetchDashboardData = async () => {
     try {
       setIsLoading(true);
-      const data = await dashboardService.getDashboardData();
+      const [data, customersData, billsData, inventoryData, expensesData] = await Promise.all([
+        dashboardService.getDashboardData(),
+        customerService.getAll().catch(() => []),
+        billService.getAll().catch(() => []),
+        inventoryService.getAll().catch(() => []),
+        expenseService.getAll().catch(() => [])
+      ]);
       setDashboardData(data);
+
+      // 1. Calculate You'll Get (receivables from customers)
+      let dueCount = 0;
+      const youllGet = (customersData || []).reduce((sum: number, c: any) => {
+        const ob = c.openingBalance > 0 ? c.openingBalance : 0;
+        const unpaidBills = (billsData || []).filter((b: any) => b.customerId === c.id && b.status?.toLowerCase() !== 'paid');
+        const unpaidSum = unpaidBills.reduce((s: number, b: any) => s + (b.totalAmount || 0), 0);
+        const total = ob + unpaidSum;
+        if (total > 0) dueCount++;
+        return sum + total;
+      }, 0);
+
+      // 2. Calculate You'll Give (payables: expenses / supplier payables)
+      const youllGive = (expensesData || []).reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+
+      // 3. Cash in Hand & UPI today
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayBills = (billsData || []).filter((b: any) => (b.createdAt || '').startsWith(todayStr));
+      const cashToday = todayBills.filter((b: any) => b.paymentMethod === 'Cash').reduce((s: number, b: any) => s + (b.totalAmount || 0), 0);
+      const upiToday = todayBills.filter((b: any) => b.paymentMethod === 'UPI').reduce((s: number, b: any) => s + (b.totalAmount || 0), 0);
+
+      // 4. Total Stock Value (qty * cost/base price)
+      const stockCount = (inventoryData || []).length;
+      const stockValue = (inventoryData || []).reduce((sum: number, it: any) => {
+        const qty = it.quantity || it.stockQuantity || 0;
+        const price = it.costPrice || it.purchasePrice || it.unitPrice || 0;
+        return sum + (qty * price);
+      }, 0);
+
+      setHeroMetrics({
+        youllGet,
+        dueCustomersCount: dueCount,
+        youllGive,
+        cashInHand: cashToday + upiToday,
+        cashToday,
+        upiToday,
+        stockValue,
+        stockCount
+      });
     } catch (e) {
       console.error('Error fetching dashboard metrics', e);
     } finally {
@@ -177,6 +243,101 @@ export default function Dashboard({
           </div>
         </div>
       )}
+
+      {/* Vyapar Core Financial Hero Cards: You'll Get, You'll Give, Cash, Stock */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 1. You'll Get (Receivables) */}
+        <div 
+          onClick={onNavigateToCustomers}
+          className="bg-gradient-to-br from-emerald-50 to-teal-50/40 border border-emerald-200/80 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all cursor-pointer group relative overflow-hidden"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>You'll Get (Receivables)</span>
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <ArrowDownLeft size={18} />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-display text-2xl lg:text-3xl font-black text-emerald-900">
+              ₹{heroMetrics.youllGet.toLocaleString('en-IN')}
+            </span>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-emerald-700 font-semibold">
+              <span>{heroMetrics.dueCustomersCount} party dues pending</span>
+              <span className="text-emerald-800 font-bold group-hover:translate-x-0.5 transition-transform flex items-center">
+                Khata &rarr;
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. You'll Give (Payables) */}
+        <div className="bg-gradient-to-br from-rose-50 to-red-50/40 border border-rose-200/80 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all group relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+              <span>You'll Give (Payables)</span>
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-100/80 text-rose-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <ArrowUpRight size={18} />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-display text-2xl lg:text-3xl font-black text-rose-900">
+              ₹{heroMetrics.youllGive.toLocaleString('en-IN')}
+            </span>
+            <p className="mt-1 text-[11px] text-rose-700 font-semibold">
+              Supplier &amp; operational dues
+            </p>
+          </div>
+        </div>
+
+        {/* 3. Cash in Hand & Bank */}
+        <div className="bg-gradient-to-br from-indigo-50 to-blue-50/40 border border-indigo-200/80 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all group relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              <span>Cash in Hand &amp; UPI</span>
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-100/80 text-indigo-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Wallet size={18} />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-display text-2xl lg:text-3xl font-black text-indigo-900">
+              ₹{heroMetrics.cashInHand.toLocaleString('en-IN')}
+            </span>
+            <div className="flex items-center gap-2 mt-1 text-[11px] text-indigo-700 font-semibold">
+              <span>Cash: ₹{heroMetrics.cashToday.toLocaleString('en-IN')}</span>
+              <span>&bull;</span>
+              <span>UPI: ₹{heroMetrics.upiToday.toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Total Stock Value */}
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50/40 border border-amber-200/80 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all group relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span>Total Stock Value</span>
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-100/80 text-amber-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Boxes size={18} />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="font-display text-2xl lg:text-3xl font-black text-amber-900">
+              ₹{heroMetrics.stockValue.toLocaleString('en-IN')}
+            </span>
+            <p className="mt-1 text-[11px] text-amber-700 font-semibold">
+              {heroMetrics.stockCount} inventory SKUs cataloged
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Metrics Row (Bento Grid) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

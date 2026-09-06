@@ -16,19 +16,27 @@ import {
   TrendingUp,
   Tag,
   MessageSquare,
-  Loader2
+  Loader2,
+  ArrowRightCircle,
+  CheckCircle2,
+  Truck
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { billService } from '../../services/bill.service';
 import { customerService } from '../../services/customer.service';
 import { staffService } from '../../services/staff.service';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
-import { whatsAppService } from '../../services/whatsapp.service';
+import { smsService } from '../../services/sms.service';
+import { businessService } from '../../services/business.service';
+import { printBill } from '../../utils/invoicePrintEngine';
+import EWayBillModal from '../../components/invoice/EWayBillModal';
 
 export default function Invoices() {
   const { currentUser } = useAuth();
   const { showToast } = useToast();
   
+  const [businessProfile, setBusinessProfile] = useState<any>(null);
   const [bills, setBills] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
@@ -50,18 +58,29 @@ export default function Invoices() {
   const [isDetailOpen, setIsDetailOpen] = useState<boolean>(false);
   const [isFilterExpanded, setIsFilterExpanded] = useState<boolean>(false);
 
-  // WhatsApp Sending States
-  const [isSendingWa, setIsSendingWa] = useState<boolean>(false);
-  const [waPhone, setWaPhone] = useState<string>('');
-  const [waCaption, setWaCaption] = useState<string>('');
-  const [isWaPromptOpen, setIsWaPromptOpen] = useState<boolean>(false);
+  // Document Type Filter & Conversion state (Vyapar Parity)
+  const navigate = useNavigate();
+  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'sale' | 'estimate' | 'challan' | 'credit_note'>('all');
+  const [isConverting, setIsConverting] = useState<number | null>(null);
+
+  // SMS Sending States
+  const [isSendingSms, setIsSendingSms] = useState<boolean>(false);
+  const [smsPhone, setSmsPhone] = useState<string>('');
+  const [isSmsPromptOpen, setIsSmsPromptOpen] = useState<boolean>(false);
+
+  // E-Way Bill State
+  const [selectedBillForEWay, setSelectedBillForEWay] = useState<any | null>(null);
 
   const isOwner = currentUser?.role === 'Owner';
 
   const loadFilterData = async () => {
     try {
-      const custData = await customerService.getAll();
+      const [custData, profileData] = await Promise.all([
+        customerService.getAll(),
+        businessService.getProfile().catch(() => null)
+      ]);
       setCustomers(custData || []);
+      if (profileData) setBusinessProfile(profileData);
       
       if (isOwner) {
         const staffData = await staffService.getAll();
@@ -143,113 +162,95 @@ export default function Invoices() {
   };
 
   const handlePrintReceipt = (bill: any) => {
-    // Simulated print trigger
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      showToast('Popup blocker prevented receipt layout generation.', 'error');
-      return;
-    }
-
-    const itemsRows = bill.items.map((it: any) => `
-      <tr>
-        <td style="padding: 6px 0; font-size: 12px; font-family: monospace;">${it.serviceName} x${it.quantity}</td>
-        <td style="padding: 6px 0; text-align: right; font-size: 12px; font-family: monospace;">₹${it.lineTotal.toFixed(2)}</td>
-      </tr>
-    `).join('');
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Receipt ${bill.billNumber}</title>
-          <style>
-            @media print {
-              body { margin: 0; padding: 20px; font-family: monospace; }
-            }
-          </style>
-        </head>
-        <body onload="window.print(); window.close();">
-          <div style="max-width: 300px; margin: 0 auto; font-family: monospace;">
-            <div style="text-align: center; margin-bottom: 16px;">
-              <h2 style="margin: 0; font-size: 18px;">${bill.branchName || 'BillCom POS'}</h2>
-              <p style="margin: 4px 0 0; font-size: 11px;">POS Thermal Billing Receipt</p>
-            </div>
-            
-            <div style="border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; font-size: 11px;">
-              <div><b>Bill No:</b> ${bill.billNumber}</div>
-              <div><b>Date:</b> ${new Date(bill.createdAt).toLocaleString()}</div>
-              <div><b>Billed By:</b> ${bill.staffName || 'Owner'}</div>
-              <div><b>Customer:</b> ${bill.customerName || 'Walk-In'} (${bill.customerPhone || 'N/A'})</div>
-            </div>
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
-              <thead>
-                <tr style="border-bottom: 1px dashed #000;">
-                  <th style="text-align: left; padding-bottom: 4px; font-size: 11px;">Item</th>
-                  <th style="text-align: right; padding-bottom: 4px; font-size: 11px;">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsRows}
-              </tbody>
-            </table>
-
-            <div style="border-top: 1px dashed #000; padding-top: 8px; font-size: 11px;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>Subtotal</span>
-                <span>₹${bill.subtotal.toFixed(2)}</span>
-              </div>
-              ${bill.discountAmount > 0 ? `
-              <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #000;">
-                <span>Discount (${bill.discountCode || 'Promo'})</span>
-                <span>-₹${bill.discountAmount.toFixed(2)}</span>
-              </div>
-              ` : ''}
-              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>CGST/SGST (5%)</span>
-                <span>₹${bill.taxAmount.toFixed(2)}</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px;">
-                <span>Grand Total</span>
-                <span>₹${bill.totalAmount.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div style="text-align: center; margin-top: 24px; font-size: 10px; border-top: 1px dashed #000; padding-top: 12px;">
-              <p style="margin: 0;">Payment Method: <b>${bill.paymentMethod}</b></p>
-              <p style="margin: 4px 0 0;">Thank You for choosing us!</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    showToast('Sent to browser print spooler.', 'success');
-  };
-
-  const handleOpenWaPrompt = (bill: any) => {
-    setWaPhone(bill.customerPhone || '');
-    setWaCaption(`Invoice ${bill.billNumber}`);
-    setSelectedBill(bill);
-    setIsWaPromptOpen(true);
-  };
-
-  const handleSendWa = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedBill || !waPhone) return;
-
-    setIsSendingWa(true);
     try {
-      await whatsAppService.sendDocument(selectedBill.id, waPhone, waCaption || undefined);
-      showToast(`Invoice successfully sent to ${waPhone} via WhatsApp!`, 'success');
-      setIsWaPromptOpen(false);
+      printBill(bill, businessProfile);
+      showToast('Invoice sent to browser print spooler.', 'success');
+    } catch (e: any) {
+      showToast('Failed to print invoice: ' + (e.message || 'Error'), 'error');
+    }
+  };
+
+  const handleOpenSmsPrompt = (bill: any) => {
+    setSmsPhone(bill.customerPhone || '');
+    setSelectedBill(bill);
+    setIsSmsPromptOpen(true);
+  };
+
+  const handleSendSms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBill || !smsPhone) return;
+
+    setIsSendingSms(true);
+    try {
+      const res = await smsService.sendInvoiceSms(selectedBill.id, smsPhone);
+      if (res.success) {
+        showToast(`Invoice successfully sent to ${smsPhone} via SMS!`, 'success');
+        setIsSmsPromptOpen(false);
+      } else {
+        showToast('SMS transmission failed: ' + res.message, 'error');
+      }
     } catch (err: any) {
-      showToast('WhatsApp transmission failed: ' + (err.response?.data?.error || err.message), 'error');
+      showToast('SMS transmission failed: ' + (err.response?.data?.error || err.message), 'error');
     } finally {
-      setIsSendingWa(false);
+      setIsSendingSms(false);
+    }
+  };
+
+  // Helpers: Transaction Type check
+  const isEstimate = (b: any) =>
+    b.status === 'Estimate' ||
+    b.transactionType === 'Estimate' ||
+    (b.billNumber && b.billNumber.startsWith('EST-'));
+
+  const isChallan = (b: any) =>
+    b.status === 'Dispatched' ||
+    b.transactionType === 'Delivery Challan' ||
+    (b.billNumber && b.billNumber.startsWith('DC-'));
+
+  const isCreditNote = (b: any) =>
+    b.status === 'Refunded' ||
+    b.transactionType === 'Credit Note' ||
+    (b.billNumber && b.billNumber.startsWith('CN-'));
+
+  // 1-Click Convert Estimate to Sale Invoice
+  const handleConvertToSale = (bill: any) => {
+    sessionStorage.setItem('billcom_convert_bill', JSON.stringify({
+      billNumber: bill.billNumber,
+      customerId: bill.customerId,
+      items: bill.items || []
+    }));
+    showToast(`Loading Estimate ${bill.billNumber} into POS register to generate Sale Invoice...`, 'info');
+    navigate('/billing');
+  };
+
+  const handleInstantConvert = async (bill: any) => {
+    setIsConverting(bill.id);
+    try {
+      const newBillNumber = bill.billNumber ? bill.billNumber.replace('EST-', 'INV-') : `INV-${Date.now().toString().slice(-6)}`;
+      await billService.update(bill.id, {
+        ...bill,
+        billNumber: newBillNumber,
+        status: 'Paid',
+        transactionType: 'Sale Invoice'
+      });
+      showToast(`Quotation ${bill.billNumber} successfully converted to Tax Invoice ${newBillNumber}!`, 'success');
+      fetchBills();
+      if (selectedBill && selectedBill.id === bill.id) {
+        setIsDetailOpen(false);
+      }
+    } catch (err: any) {
+      showToast('Error converting estimate: ' + (err.response?.data || err.message), 'error');
+    } finally {
+      setIsConverting(null);
     }
   };
 
   const filteredBills = bills.filter(b => {
+    if (docTypeFilter === 'estimate' && !isEstimate(b)) return false;
+    if (docTypeFilter === 'challan' && !isChallan(b)) return false;
+    if (docTypeFilter === 'credit_note' && !isCreditNote(b)) return false;
+    if (docTypeFilter === 'sale' && (isEstimate(b) || isChallan(b) || isCreditNote(b))) return false;
+
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
     return (
@@ -258,6 +259,11 @@ export default function Invoices() {
       (b.customerPhone || '').includes(q)
     );
   });
+
+  const estimatesCount = bills.filter(isEstimate).length;
+  const challansCount = bills.filter(isChallan).length;
+  const creditNotesCount = bills.filter(isCreditNote).length;
+  const salesCount = bills.filter(b => !isEstimate(b) && !isChallan(b) && !isCreditNote(b)).length;
 
   return (
     <motion.div 
@@ -299,6 +305,79 @@ export default function Invoices() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Transaction Type Filter Tabs (Vyapar Signature Bar) */}
+      <div className="bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+        <button
+          onClick={() => setDocTypeFilter('all')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            docTypeFilter === 'all'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <span>📑 All Transactions</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${docTypeFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+            {bills.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setDocTypeFilter('sale')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            docTypeFilter === 'sale'
+              ? 'bg-[#006a61] text-white shadow-sm'
+              : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+          }`}
+        >
+          <span>🧾 Sale Invoices</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${docTypeFilter === 'sale' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+            {salesCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setDocTypeFilter('estimate')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            docTypeFilter === 'estimate'
+              ? 'bg-amber-500 text-white shadow-sm'
+              : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+          }`}
+        >
+          <span>📝 Estimates / Quotes</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${docTypeFilter === 'estimate' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'}`}>
+            {estimatesCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setDocTypeFilter('challan')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            docTypeFilter === 'challan'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+          }`}
+        >
+          <span>🚚 Delivery Challans</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${docTypeFilter === 'challan' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'}`}>
+            {challansCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setDocTypeFilter('credit_note')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            docTypeFilter === 'credit_note'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+          }`}
+        >
+          <span>↩️ Credit Notes</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${docTypeFilter === 'credit_note' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-800'}`}>
+            {creditNotesCount}
+          </span>
+        </button>
       </div>
 
       {/* Advanced Filters Expandable Grid */}
@@ -465,7 +544,14 @@ export default function Invoices() {
                     className="hover:bg-slate-50/60 transition-colors"
                   >
                     <td className="p-4 font-sans font-bold text-[#006a61]">
-                      {bill.billNumber}
+                      <div>{bill.billNumber}</div>
+                      <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded border inline-block mt-0.5 ${
+                        isEstimate(bill) ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                        isChallan(bill) ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                        isCreditNote(bill) ? 'bg-purple-50 text-purple-800 border-purple-200' : 'bg-teal-50 text-teal-800 border-teal-200'
+                      }`}>
+                        {bill.transactionType || (isEstimate(bill) ? 'Estimate' : isChallan(bill) ? 'Challan' : isCreditNote(bill) ? 'Credit Note' : 'Tax Invoice')}
+                      </span>
                     </td>
                     <td className="p-4">
                       <div className="font-semibold text-[#0b1c30]">{bill.customerName || 'Walk-In'}</div>
@@ -487,7 +573,9 @@ export default function Invoices() {
                     </td>
                     <td className="p-4">
                       <span className={`px-2 py-0.5 rounded font-sans text-[9px] font-bold uppercase border ${
-                        bill.status === 'Paid' 
+                        isEstimate(bill)
+                          ? 'bg-amber-50 border-amber-200 text-amber-700'
+                          : bill.status === 'Paid' 
                           ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
                           : 'bg-amber-50 border-amber-200 text-amber-700'
                       }`}>
@@ -495,6 +583,19 @@ export default function Invoices() {
                       </span>
                     </td>
                     <td className="p-4 text-right flex items-center justify-end gap-1.5">
+                      {/* 1-Click Convert to Sale Button for Estimates */}
+                      {isEstimate(bill) && (
+                        <button
+                          title="Convert to Sale Invoice in POS"
+                          disabled={isConverting === bill.id}
+                          onClick={() => handleConvertToSale(bill)}
+                          className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                        >
+                          <Sparkles size={11} />
+                          <span>Convert to Sale</span>
+                        </button>
+                      )}
+
                       <button
                         title="View Details"
                         onClick={() => {
@@ -513,11 +614,18 @@ export default function Invoices() {
                         <Printer size={14} />
                       </button>
                       <button
-                        title="Send via WhatsApp"
-                        onClick={() => handleOpenWaPrompt(bill)}
-                        className="p-1.5 text-[#25d366] hover:bg-emerald-50 rounded transition-colors"
+                        title="Send via SMS"
+                        onClick={() => handleOpenSmsPrompt(bill)}
+                        className="p-1.5 text-[#006a61] hover:bg-teal-50 rounded transition-colors"
                       >
                         <MessageSquare size={14} />
+                      </button>
+                      <button
+                        title="Generate E-Way Bill (NIC JSON)"
+                        onClick={() => setSelectedBillForEWay(bill)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      >
+                        <Truck size={14} />
                       </button>
                       {isOwner && (
                         <button
@@ -655,26 +763,30 @@ export default function Invoices() {
               </div>
 
               {/* Action buttons footer */}
-              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
-                <button
-                  onClick={() => setIsDetailOpen(false)}
-                  className="font-sans text-xs font-semibold px-4 py-2 border rounded-lg bg-white text-[#45464d] hover:bg-slate-50"
-                >
-                  Close
-                </button>
+              {/* Action Buttons in Drawer */}
+              <div className="p-4 border-t flex flex-wrap items-center justify-end gap-2 bg-slate-50">
+                {isEstimate(selectedBill) && (
+                  <button
+                    onClick={() => handleConvertToSale(selectedBill)}
+                    className="font-sans text-xs font-bold px-4 py-2 bg-amber-500 text-white rounded-lg flex items-center gap-1.5 shadow-sm hover:bg-amber-600 cursor-pointer"
+                  >
+                    <Sparkles size={14} />
+                    <span>Convert to Sale Invoice</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setIsDetailOpen(false);
-                    handleOpenWaPrompt(selectedBill);
+                    handleOpenSmsPrompt(selectedBill);
                   }}
-                  className="font-sans text-xs font-bold px-4 py-2 bg-[#25d366] text-white rounded-lg flex items-center gap-1.5 shadow-sm hover:bg-[#22c55e]"
+                  className="font-sans text-xs font-bold px-4 py-2 bg-slate-700 text-white rounded-lg flex items-center gap-1.5 shadow-sm hover:bg-slate-800 cursor-pointer"
                 >
                   <MessageSquare size={14} />
-                  <span>Send WhatsApp</span>
+                  <span>Send SMS</span>
                 </button>
                 <button
                   onClick={() => handlePrintReceipt(selectedBill)}
-                  className="font-sans text-xs font-bold px-4 py-2 bg-[#006a61] text-white rounded-lg flex items-center gap-1.5 shadow-sm"
+                  className="font-sans text-xs font-bold px-4 py-2 bg-[#006a61] text-white rounded-lg flex items-center gap-1.5 shadow-sm hover:bg-[#004d47] cursor-pointer"
                 >
                   <Printer size={14} />
                   <span>Print Receipt</span>
@@ -685,15 +797,15 @@ export default function Invoices() {
         )}
       </AnimatePresence>
 
-      {/* WhatsApp Send Prompt Modal */}
+      {/* SMS Send Prompt Modal */}
       <AnimatePresence>
-        {isWaPromptOpen && selectedBill && (
+        {isSmsPromptOpen && selectedBill && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.6 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsWaPromptOpen(false)}
+              onClick={() => setIsSmsPromptOpen(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-xs"
             ></motion.div>
 
@@ -705,64 +817,64 @@ export default function Invoices() {
             >
               <div className="p-4 border-b flex justify-between items-center bg-[#eff4ff]/60">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="text-[#25d366]" size={20} />
-                  <span className="font-display font-black text-sm text-[#0b1c30]">Send via WhatsApp</span>
+                  <MessageSquare className="text-[#006a61]" size={20} />
+                  <span className="font-display font-black text-sm text-[#0b1c30]">Send Invoice SMS</span>
                 </div>
                 <button
-                  onClick={() => setIsWaPromptOpen(false)}
+                  onClick={() => setIsSmsPromptOpen(false)}
                   className="p-1 text-[#7c839b] hover:text-[#0b1c30] rounded-full hover:bg-slate-200/50 transition-all"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <form onSubmit={handleSendWa} className="p-5 space-y-4 text-xs font-semibold text-[#45464d]">
+              <form onSubmit={handleSendSms} className="p-5 space-y-4 text-xs font-semibold text-[#45464d]">
                 <div>
                   <label className="block text-[10px] font-bold text-[#7c839b] uppercase mb-1">Recipient Phone Number</label>
                   <input
                     type="text"
                     required
-                    value={waPhone}
-                    onChange={(e) => setWaPhone(e.target.value)}
-                    placeholder="e.g. +919876543210"
+                    value={smsPhone}
+                    onChange={(e) => setSmsPhone(e.target.value)}
+                    placeholder="e.g. 9876543210"
                     className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
                   />
-                  <p className="text-[10px] text-[#7c839b] font-medium mt-1">Include country code without spaces/special chars (e.g. +91...)</p>
+                  <p className="text-[10px] text-[#7c839b] font-medium mt-1">10-digit mobile number or format with country code (e.g. +91...)</p>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-[#7c839b] uppercase mb-1">Caption (Optional)</label>
-                  <input
-                    type="text"
-                    value={waCaption}
-                    onChange={(e) => setWaCaption(e.target.value)}
-                    placeholder="e.g. Invoice INV-12345"
-                    className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none"
-                  />
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-500">Invoice:</span>
+                    <span className="font-bold text-slate-800">{selectedBill.billNumber}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-500">Total:</span>
+                    <span className="font-bold text-[#006a61]">₹{selectedBill.totalAmount?.toFixed(2)}</span>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2 border-t">
                   <button
                     type="button"
-                    onClick={() => setIsWaPromptOpen(false)}
-                    className="px-4 py-2 border rounded-lg bg-white text-[#45464d] hover:bg-slate-50"
+                    onClick={() => setIsSmsPromptOpen(false)}
+                    className="px-4 py-2 border rounded-lg bg-white text-[#45464d] hover:bg-slate-50 cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={isSendingWa}
-                    className="px-4 py-2 bg-[#25d366] text-white rounded-lg flex items-center gap-1.5 font-bold hover:bg-[#22c55e] disabled:opacity-50"
+                    disabled={isSendingSms}
+                    className="px-4 py-2 bg-[#006a61] text-white rounded-lg flex items-center gap-1.5 font-bold hover:bg-[#00554e] disabled:opacity-50 cursor-pointer"
                   >
-                    {isSendingWa ? (
+                    {isSendingSms ? (
                       <>
                         <Loader2 className="animate-spin" size={14} />
-                        <span>Sending...</span>
+                        <span>Sending SMS...</span>
                       </>
                     ) : (
                       <>
                         <MessageSquare size={14} />
-                        <span>Send Invoice</span>
+                        <span>Send Invoice SMS</span>
                       </>
                     )}
                   </button>
@@ -772,6 +884,15 @@ export default function Invoices() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* E-Way Bill Generation Modal */}
+      {selectedBillForEWay && (
+        <EWayBillModal
+          isOpen={!!selectedBillForEWay}
+          onClose={() => setSelectedBillForEWay(null)}
+          invoice={selectedBillForEWay}
+        />
+      )}
     </motion.div>
   );
 }

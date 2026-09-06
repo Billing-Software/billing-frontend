@@ -1,18 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Outlet } from 'react-router-dom';
 import { 
   X, 
   LogOut, 
-  Building2,
-  LayoutDashboard,
-  Receipt,
-  Users,
-  Sparkles,
-  Boxes,
-  SquareUser,
-  Settings,
-  FileText
+  Building2, 
+  LayoutDashboard, 
+  Receipt, 
+  Users, 
+  Sparkles, 
+  Boxes, 
+  SquareUser, 
+  Settings, 
+  FileText,
+  Wallet,
+  FileBarChart,
+  Crown
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -20,6 +23,7 @@ import { User, Branch } from '../types';
 import logoText from '../assets/BillCom-text.svg';
 
 import { useBusinessConfig } from '../context/BusinessConfigContext';
+import { getPlanDetails } from '../constants/subscription.constants';
 
 interface MainLayoutProps {
   children?: React.ReactNode;
@@ -52,16 +56,48 @@ export default function MainLayout({
 }: MainLayoutProps) {
   const { t, hasFeature } = useBusinessConfig();
 
+  // Global Keyboard Shortcuts (Alt+S: Sale, Alt+D: Dashboard, Alt+C: Customers, Alt+I: Invoices, Alt+P: Products)
+  useEffect(() => {
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      // Don't trigger if user is actively typing in text input/textarea
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      const isTyping = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+      if (e.altKey) {
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault();
+          setActiveTab('billing');
+        } else if (e.key === 'd' || e.key === 'D') {
+          e.preventDefault();
+          setActiveTab('dashboard');
+        } else if (e.key === 'c' || e.key === 'C') {
+          e.preventDefault();
+          setActiveTab('customers');
+        } else if (e.key === 'i' || e.key === 'I') {
+          e.preventDefault();
+          setActiveTab('invoices');
+        } else if (e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          setActiveTab('inventory');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, [setActiveTab]);
+
   const mobileMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: hasFeature('dashboard') },
     { id: 'billing', label: `New ${t('invoice')}`, icon: Receipt, show: hasFeature('billing') },
     { id: 'invoices', label: t('invoice', true), icon: FileText, show: hasFeature('invoices') },
+    { id: 'reports', label: 'GST Reports', icon: FileBarChart, show: hasFeature('reports') },
     { id: 'customers', label: t('customer', true), icon: Users, show: hasFeature('customers') },
     { id: 'services', label: t('service', true), icon: Sparkles, show: hasFeature('services') },
     { id: 'inventory', label: t('product', true), icon: Boxes, show: hasFeature('inventory') && hasFeature('products') },
     { id: 'branches', label: 'Branches', icon: Building2, show: hasFeature('branches') },
     { id: 'staff', label: t('staff', true), icon: SquareUser, show: hasFeature('staff_manage') },
-    { id: 'expenses', label: 'Expenses', icon: Settings, show: hasFeature('expenses') },
+    { id: 'expenses', label: 'Expenses', icon: Wallet, show: hasFeature('expenses') },
     { id: 'settings', label: 'Settings', icon: Settings, show: hasFeature('settings') },
   ].filter(item => item.show);
 
@@ -193,8 +229,53 @@ export default function MainLayout({
                       <Building2 size={16} />
                     </div>
                   )}
-                  <div>
-                    <h5 className="text-xs font-bold text-[#0b1c30]">{currentUser.name || currentUser.username}</h5>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h5 className="text-xs font-bold text-[#0b1c30] truncate">{currentUser.name || currentUser.username}</h5>
+                      {(() => {
+                        const plan = getPlanDetails(currentUser.activePlanId);
+                        const isTrial = currentUser.isTrial || currentUser.subscriptionStatus?.toLowerCase() === 'trial';
+                        const isTrialExpired = currentUser.subscriptionStatus?.toLowerCase() === 'trialexpired';
+                        return (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <button
+                              id="mobile-subscription-badge"
+                              onClick={() => {
+                                setActiveTab('settings?tab=subscription');
+                                setIsMobileMenuOpen(false);
+                              }}
+                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8.5px] font-bold uppercase tracking-wider border cursor-pointer ${plan.badgeBg} ${plan.badgeText} ${plan.badgeBorder}`}
+                              title="Manage Subscription Plans"
+                            >
+                              <Crown size={9} className={plan.crownColor} />
+                              <span>{plan.shortName}</span>
+                            </button>
+                            {isTrial && (
+                              <span 
+                                onClick={() => {
+                                  setActiveTab('settings?tab=subscription');
+                                  setIsMobileMenuOpen(false);
+                                }}
+                                className="inline-flex items-center px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer"
+                              >
+                                ⚡ Trial
+                              </span>
+                            )}
+                            {isTrialExpired && (
+                              <span 
+                                onClick={() => {
+                                  setActiveTab('settings?tab=subscription');
+                                  setIsMobileMenuOpen(false);
+                                }}
+                                className="inline-flex items-center px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300 cursor-pointer"
+                              >
+                                ⚠️ Expired
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <p className="text-[9px] text-[#45464d] font-semibold">{currentUser.role}</p>
                     <p className="text-[9px] text-[#7c839b] font-semibold mt-0.5 truncate max-w-[160px]">{currentUser.businessName} (ID: {currentUser.businessId})</p>
                   </div>

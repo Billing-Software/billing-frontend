@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Plus, Trash2, Edit2, Award, Loader2, Building2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { StaffMember, Branch } from '../../types';
 import { staffService } from '../../services/staff.service';
 import { branchService } from '../../services/branch.service';
 import { billService } from '../../services/bill.service';
 import { businessService } from '../../services/business.service';
 import { useToast } from '../../hooks/useToast';
+import { getPlanName } from '../../constants/subscription.constants';
 
 export default function Staff() {
+  const navigate = useNavigate();
   const { showToast } = useToast();
   
   // Scoped States
@@ -186,15 +189,6 @@ export default function Staff() {
     (member.branchName && member.branchName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const getPlanName = (planId: number) => {
-    switch (planId) {
-      case 1: return 'Starter Plan';
-      case 2: return 'Professional Plan';
-      case 3: return 'Enterprise Plan';
-      default: return 'Custom Plan';
-    }
-  };
-
   const allowedStaffLimit = businessProfile?.allowedStaff ?? 2;
   const isStaffLimitReached = allowedStaffLimit !== -1 && staff.length >= allowedStaffLimit;
 
@@ -243,13 +237,19 @@ export default function Staff() {
           </div>
 
           {isStaffLimitReached && (
-            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-start gap-3 max-w-md">
-              <Building2 className="text-amber-500 shrink-0 mt-0.5" size={16} />
-              <div className="text-left space-y-1">
-                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider">Staff Limit Reached</h4>
-                <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
-                  Your store is currently utilizing all staff slots allowed under the {getPlanName(businessProfile.activePlanId)}. To unlock more slots, upgrade your subscription plan via superadmin configuration.
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 max-w-md">
+              <Building2 className="text-amber-600 shrink-0 mt-0.5" size={18} />
+              <div className="text-left space-y-2">
+                <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Staff Quota Reached</h4>
+                <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                  Your store is currently using all staff slots allowed under <strong className="font-bold">{getPlanName(businessProfile.activePlanId)}</strong> ({allowedStaffLimit} staff). Upgrade to Growth Business (10 staff) or Enterprise Chain (50 staff) to add more team members.
                 </p>
+                <button
+                  onClick={() => navigate('/settings?tab=subscription')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Upgrade Subscription Plan</span>
+                </button>
               </div>
             </div>
           )}

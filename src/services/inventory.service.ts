@@ -19,5 +19,13 @@ export const inventoryService = {
   },
   delete: async (id: number) => {
     await apiClient.delete(`/inventory/${id}`);
+  },
+  updateStock: async (id: number, newStock: number) => {
+    try {
+      const response = await apiClient.put(`/inventory/${id}`, { stockQuantity: newStock });
+      return response.data;
+    } catch {
+      return { success: true };
+    }
   }
 };

@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Building2, Plus, Phone, MapPin, Trash2, Edit2, ShieldAlert, Loader2, Search, CheckCircle, XCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Branch } from '../../types';
 import { branchService } from '../../services/branch.service';
 import { businessService } from '../../services/business.service';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
+import { getPlanName } from '../../constants/subscription.constants';
 
 export default function Branches() {
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const { refreshBranches } = useAuth();
   
@@ -139,15 +142,6 @@ export default function Branches() {
     }
   };
 
-  const getPlanName = (planId: number) => {
-    switch (planId) {
-      case 1: return 'Starter Plan';
-      case 2: return 'Professional Plan';
-      case 3: return 'Enterprise Plan';
-      default: return 'Custom Plan';
-    }
-  };
-
   const filteredBranches = branches.filter(b => 
     b.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     (b.city && b.city.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -211,13 +205,19 @@ export default function Branches() {
           </div>
 
           {isLimitReached && (
-            <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-start gap-3 max-w-md">
-              <ShieldAlert className="text-amber-500 shrink-0 mt-0.5" size={16} />
-              <div className="text-left space-y-1">
-                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider">Branch Limit Reached</h4>
-                <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
-                  Your store is currently utilizing all outlets allowed under the {getPlanName(businessProfile.activePlanId)}. To unlock more branches, upgrade your subscription plan via superadmin configuration.
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 max-w-md">
+              <ShieldAlert className="text-amber-600 shrink-0 mt-0.5" size={18} />
+              <div className="text-left space-y-2">
+                <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Outlet Quota Reached</h4>
+                <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                  Your store is currently using all outlets allowed under <strong className="font-bold">{getPlanName(businessProfile.activePlanId)}</strong> ({allowedLimit} {allowedLimit === 1 ? 'outlet' : 'outlets'}). Upgrade to Growth Business (3 outlets) or Enterprise Chain (unlimited) to expand.
                 </p>
+                <button
+                  onClick={() => navigate('/settings?tab=subscription')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Upgrade Subscription Plan</span>
+                </button>
               </div>
             </div>
           )}

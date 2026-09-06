@@ -20,6 +20,7 @@ import { useToast } from '../hooks/useToast';
 import Onboarding from '../pages/Onboarding/Onboarding';
 import SuperAdminDashboard from '../pages/SuperAdmin/SuperAdminDashboard';
 import Branches from '../pages/Branches/Branches';
+import PublicStorefront from '../pages/Store/PublicStorefront';
 import { useBusinessConfig } from '../context/BusinessConfigContext';
 
 interface AppRoutesProps {
@@ -53,17 +54,31 @@ function Help() {
           </p>
         </div>
 
-        <div className="p-4 bg-[#e6f4ea] border border-[#1e8e3e]/20 rounded-lg">
-          <h4 className="font-bold text-[#1e8e3e] flex items-center gap-2">
+        <div className="p-4 bg-[#eff6ff] border border-[#2563eb]/20 rounded-lg">
+          <h4 className="font-bold text-[#2563eb] flex items-center gap-2">
             <MessageCircle size={16} />
-            <span>WhatsApp Integration Webhook</span>
+            <span>SMS Invoicing Engine (DLT Compliant)</span>
           </h4>
-          <p className="mt-1 leading-normal text-xs text-[#1e8e3e]/90 font-medium">
-            Go to settings tab to update webhook authorizations. Simulated background tasks handle bulk communication with maximum reliability.
+          <p className="mt-1 leading-normal text-xs text-[#2563eb]/90 font-medium">
+            Go to the Settings tab to configure your Sender ID and DLT Template IDs. Automated SMS invoices are dispatched via the Exotel engine.
           </p>
         </div>
       </div>
     </motion.div>
+  );
+}
+
+const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || 'http://localhost:5173';
+
+function ExternalRedirect({ url }: { url: string }) {
+  React.useEffect(() => {
+    window.location.href = url;
+  }, [url]);
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-slate-800">
+      <div className="animate-spin rounded-full h-8 w-8 border-4 border-[#006a61] border-t-transparent mb-3"></div>
+      <p className="text-xs font-semibold text-slate-600">Redirecting to 7-Day Free Trial & Pricing...</p>
+    </div>
   );
 }
 
@@ -101,8 +116,12 @@ export default function AppRoutes({
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Navigate to="/login" replace />} />
+      <Route path="/pricing" element={<ExternalRedirect url={`${MARKETING_URL}/#/pricing`} />} />
+      <Route path="/trial" element={<ExternalRedirect url={`${MARKETING_URL}/#/pricing`} />} />
+      <Route path="/register" element={<ExternalRedirect url={`${MARKETING_URL}/#/pricing`} />} />
       <Route path="/autologin" element={<AutoLogin />} />
+      <Route path="/shop" element={<PublicStorefront />} />
+      <Route path="/shop/:slug" element={<PublicStorefront />} />
       <Route 
         path="/onboarding" 
         element={
@@ -149,6 +168,7 @@ export default function AppRoutes({
               onNavigateToBilling={() => handleSetActiveTab('billing')}
               onNavigateToStaff={() => handleSetActiveTab('staff')}
               onNavigateToServices={() => handleSetActiveTab('services')}
+              onNavigateToCustomers={() => handleSetActiveTab('customers')}
               currentBranch={currentBranch}
             />
           )
@@ -162,7 +182,9 @@ export default function AppRoutes({
         <Route path="staff" element={hasFeature('staff_manage') ? <Staff /> : <Navigate to="/dashboard" replace />} />
         <Route path="branches" element={hasFeature('branches') ? <Branches /> : <Navigate to="/dashboard" replace />} />
         <Route path="settings" element={hasFeature('settings') ? <Settings /> : <Navigate to="/dashboard" replace />} />
+        <Route path="subscription" element={<Navigate to="/settings?tab=subscription" replace />} />
         <Route path="expenses" element={hasFeature('expenses') ? <Expenses /> : <Navigate to="/dashboard" replace />} />
+
         <Route path="help" element={<Help />} />
         
         {/* Redirect from root or invalid paths */}

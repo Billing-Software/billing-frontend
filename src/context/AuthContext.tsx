@@ -1,6 +1,7 @@
 import React, { createContext, useState, ReactNode, useEffect } from 'react';
 import { User, Branch } from '../types';
 import { branchService } from '../services/branch.service';
+import { businessService } from '../services/business.service';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -98,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setBranches([]);
       setCurrentBranch(null);
     }
-  }, [currentUser]);
+  }, [currentUser?.token]);
 
   // Listen to logout event dispatched by API client
   useEffect(() => {
@@ -108,6 +109,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener('auth_logout', onAuthLogout);
     return () => {
       window.removeEventListener('auth_logout', onAuthLogout);
+    };
+  }, []);
+
+  // Listen to subscription_updated event to sync active plan across sidebar and header
+  useEffect(() => {
+    const onSubscriptionUpdated = async () => {
+      try {
+        const profile = await businessService.getProfile();
+        if (profile) {
+          setCurrentUser(prev => {
+            if (!prev) return null;
+            const updated = {
+              ...prev,
+              activePlanId: profile.activePlanId ?? prev.activePlanId,
+              subscriptionStatus: profile.subscriptionStatus || 'Active',
+              isTrial: profile.isTrial ?? false,
+              subscriptionExpiresAt: profile.subscriptionExpiresAt ?? prev.subscriptionExpiresAt,
+            };
+            localStorage.setItem('auth_data', JSON.stringify(updated));
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to refresh user profile on subscription_updated:', err);
+      }
+    };
+    window.addEventListener('subscription_updated', onSubscriptionUpdated);
+    return () => {
+      window.removeEventListener('subscription_updated', onSubscriptionUpdated);
     };
   }, []);
 

@@ -14,11 +14,14 @@ import {
   Wallet,
   FileText,
   BadgeCheck,
-  FileBarChart
+  FileBarChart,
+  Crown
 } from 'lucide-react';
 import { User } from '../../types';
 import logoText from '../../assets/BillCom-text.svg';
 import { useBusinessConfig } from '../../context/BusinessConfigContext';
+import { getTranslation, SupportedLanguage } from '../../utils/i18n';
+import { getPlanDetails } from '../../constants/subscription.constants';
 
 interface SidebarProps {
   currentTab: string;
@@ -30,19 +33,30 @@ interface SidebarProps {
 
 export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, user }: SidebarProps) {
   const { config, t, hasFeature } = useBusinessConfig();
+  const [lang, setLang] = React.useState<SupportedLanguage>(() => {
+    return (localStorage.getItem('billcom_lang') as SupportedLanguage) || 'en';
+  });
+
+  React.useEffect(() => {
+    const onLangChange = () => {
+      setLang((localStorage.getItem('billcom_lang') as SupportedLanguage) || 'en');
+    };
+    window.addEventListener('languagechange', onLangChange);
+    return () => window.removeEventListener('languagechange', onLangChange);
+  }, []);
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, show: hasFeature('dashboard') },
-    { id: 'billing', label: `New ${t('invoice')}`, icon: Receipt, show: hasFeature('billing') },
-    { id: 'invoices', label: t('invoice', true), icon: FileText, show: hasFeature('invoices') },
-    { id: 'reports', label: 'GST Reports', icon: FileBarChart, show: hasFeature('reports') },
-    { id: 'customers', label: t('customer', true), icon: Users, show: hasFeature('customers') },
-    { id: 'services', label: t('service', true), icon: Sparkles, show: hasFeature('services') },
-    { id: 'inventory', label: t('product', true), icon: Boxes, show: hasFeature('inventory') && hasFeature('products') },
-    { id: 'branches', label: 'Branches', icon: Building2, show: hasFeature('branches') },
-    { id: 'staff', label: t('staff', true), icon: SquareUser, show: hasFeature('staff_manage') },
-    { id: 'expenses', label: 'Expenses', icon: Wallet, show: hasFeature('expenses') },
-    { id: 'settings', label: 'Settings', icon: Settings, show: hasFeature('settings') },
+    { id: 'dashboard', label: getTranslation(lang, 'nav.dashboard'), icon: LayoutDashboard, show: hasFeature('dashboard') },
+    { id: 'billing', label: getTranslation(lang, 'nav.new_bill'), icon: Receipt, show: hasFeature('billing') },
+    { id: 'invoices', label: getTranslation(lang, 'nav.invoices'), icon: FileText, show: hasFeature('invoices') },
+    { id: 'reports', label: getTranslation(lang, 'nav.reports'), icon: FileBarChart, show: hasFeature('reports') },
+    { id: 'customers', label: getTranslation(lang, 'nav.customers'), icon: Users, show: hasFeature('customers') },
+    { id: 'services', label: getTranslation(lang, 'nav.services'), icon: Sparkles, show: hasFeature('services') },
+    { id: 'inventory', label: getTranslation(lang, 'nav.inventory'), icon: Boxes, show: hasFeature('inventory') && hasFeature('products') },
+    { id: 'branches', label: getTranslation(lang, 'nav.branches'), icon: Building2, show: hasFeature('branches') },
+    { id: 'staff', label: getTranslation(lang, 'nav.staff'), icon: SquareUser, show: hasFeature('staff_manage') },
+    { id: 'expenses', label: getTranslation(lang, 'nav.expenses'), icon: Wallet, show: hasFeature('expenses') },
+    { id: 'settings', label: getTranslation(lang, 'nav.settings'), icon: Settings, show: hasFeature('settings') },
   ].filter(item => item.show);
 
   const businessTypeBadge = config?.businessType || 'General Retail Store';
@@ -63,10 +77,16 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
         <button 
           id="new-bill-btn"
           onClick={onNewBill}
-          className="w-full mb-5 bg-[#006a61] text-[#ffffff] font-sans text-sm font-semibold py-2.5 px-4 rounded-lg hover:bg-opacity-90 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-sm shadow-[#006a61]/10"
+          title="New Sale (Alt + S)"
+          className="w-full mb-5 bg-[#006a61] text-[#ffffff] font-sans text-sm font-semibold py-2.5 px-3 rounded-lg hover:bg-opacity-90 active:scale-98 transition-all flex items-center justify-between shadow-sm shadow-[#006a61]/10 group cursor-pointer"
         >
-          <Plus size={16} />
-          <span>New {t('invoice')}</span>
+          <div className="flex items-center gap-2">
+            <Plus size={16} />
+            <span>New {t('invoice')}</span>
+          </div>
+          <kbd className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded font-mono font-normal opacity-80 group-hover:opacity-100">
+            Alt+S
+          </kbd>
         </button>
 
         {/* Menu Navigation */}
@@ -126,8 +146,46 @@ export default function Sidebar({ currentTab, onChangeTab, onNewBill, onLogout, 
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="font-sans text-xs font-semibold text-[#0b1c30] truncate">{user.name || user.username}</p>
-              <p className="font-sans text-[9px] text-[#45464d] leading-none truncate">{user.role}</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="font-sans text-xs font-semibold text-[#0b1c30] truncate">{user.name || user.username}</p>
+                {(() => {
+                  const plan = getPlanDetails(user.activePlanId);
+                  const isTrial = user.isTrial || user.subscriptionStatus?.toLowerCase() === 'trial';
+                  const isTrialExpired = user.subscriptionStatus?.toLowerCase() === 'trialexpired';
+                  return (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <button
+                        id="sidebar-subscription-badge"
+                        onClick={() => onChangeTab('settings?tab=subscription')}
+                        title="Manage Subscription Plans in Settings"
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8.5px] font-bold uppercase tracking-wider border cursor-pointer transition-all hover:scale-102 ${plan.badgeBg} ${plan.badgeText} ${plan.badgeBorder}`}
+                      >
+                        <Crown size={9} className={plan.crownColor} />
+                        <span>{plan.shortName}</span>
+                      </button>
+                      {isTrial && (
+                        <span 
+                          onClick={() => onChangeTab('settings?tab=subscription')}
+                          title="7-Day Free Trial Active"
+                          className="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer"
+                        >
+                          ⚡ Trial
+                        </span>
+                      )}
+                      {isTrialExpired && (
+                        <span 
+                          onClick={() => onChangeTab('settings?tab=subscription')}
+                          title="Trial Expired - Upgrade Now"
+                          className="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300 cursor-pointer"
+                        >
+                          ⚠️ Expired
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+              <p className="font-sans text-[9px] text-[#45464d] leading-none truncate mt-0.5">{user.role}</p>
               <p className="font-sans text-[9px] text-[#7c839b] leading-normal truncate mt-0.5" title={user.businessName}>
                 {user.businessName}
               </p>

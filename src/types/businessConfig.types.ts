@@ -22,6 +22,7 @@ export interface BusinessConfig {
   sellingModel: 'GOODS_ONLY' | 'SERVICES_ONLY' | 'GOODS_AND_SERVICES' | string;
   gstScheme: 'Regular' | 'Composition' | 'None' | string;
   gstIn?: string;
+  address?: string;
   registeredState?: string;
   isGstEnabled: boolean;
   features: Record<string, boolean>;

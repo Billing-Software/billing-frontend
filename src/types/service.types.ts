@@ -7,4 +7,7 @@ export interface Service {
   taxRate: number;
   status: 'Active' | 'Inactive';
   imageUrl: string;
+  hsnSac?: string;
+  itemType?: 'Service' | 'Product';
 }
+

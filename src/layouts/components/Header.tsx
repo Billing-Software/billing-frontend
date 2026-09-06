@@ -1,8 +1,11 @@
 import React from 'react';
-import { Search, Bell, Grid, Share2, Plus, Menu, Building2, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Bell, Grid, Share2, Plus, Menu, Building2, LogOut, Crown } from 'lucide-react';
 import { User, Branch } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import logoText from '../../assets/BillCom-text.svg';
+import { getPlanDetails } from '../../constants/subscription.constants';
+
 
 interface HeaderProps {
   currentBranch: Branch | null;
@@ -28,6 +31,9 @@ export default function Header({
   onLogout
 }: HeaderProps) {
   const { branches } = useAuth();
+  const navigate = useNavigate();
+
+  const plan = getPlanDetails(user?.activePlanId);
 
   return (
     <header className="flex justify-between items-center h-16 px-4 md:px-8 bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-[#e2e8f0] shrink-0">
@@ -61,8 +67,10 @@ export default function Header({
         </div>
       </div>
 
-      {/* Right section: Quick actions, notifications, branch selection, user profile */}
-      <div className="flex items-center gap-3">
+      {/* Right section: Quick actions, notifications, branch selection, language, user profile */}
+      <div className="flex items-center gap-2.5">
+
+
         {/* Quick Actions (only on larger screens to avoid overlay clutter) */}
         <div className="hidden lg:flex items-center gap-2">
           <button
@@ -126,12 +134,35 @@ export default function Header({
           <Grid size={18} />
         </button>
  
-        {/* User Portrait preview */}
+        {/* User Portrait preview with Subscription Badge */}
         {user && (
-          <div className="flex items-center gap-2.5 md:border-l md:border-[#e2e8f0] md:pl-3">
+          <div 
+            onClick={() => navigate('/settings?tab=subscription')}
+            title="Manage Subscription & Plans"
+            className="flex items-center gap-2.5 md:border-l md:border-[#e2e8f0] md:pl-3 cursor-pointer group hover:opacity-95 transition-all"
+          >
             <div className="hidden sm:flex flex-col items-end text-right">
-              <span className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[120px]">{user.name || user.username}</span>
-              <span className="text-[10px] text-slate-500 font-semibold leading-none">{user.role}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[120px]">
+                  {user.name || user.username}
+                </span>
+                {/* Subscription Tier Pill */}
+                <span className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${plan.badgeBg} ${plan.badgeText} ${plan.badgeBorder}`}>
+                  <Crown size={10} className={plan.crownColor} />
+                  {plan.shortName}
+                </span>
+                {(user.isTrial || user.subscriptionStatus?.toLowerCase() === 'trial') && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                    ⚡ Trial
+                  </span>
+                )}
+                {user.subscriptionStatus?.toLowerCase() === 'trialexpired' && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
+                    ⚠️ Expired
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-500 font-semibold leading-none mt-0.5">{user.role}</span>
             </div>
 
             {user?.avatarUrl && typeof user.avatarUrl === 'string' && user.avatarUrl.trim() !== '' && user.avatarUrl !== 'null' && user.avatarUrl !== 'undefined' ? (
@@ -139,12 +170,12 @@ export default function Header({
                 referrerPolicy="no-referrer"
                 src={user.avatarUrl} 
                 alt={user.name || user.username} 
-                className="hidden md:block w-8 h-8 rounded-full border border-[#c6c6cd] object-cover hover:opacity-85 transition-opacity cursor-pointer text-xs"
+                className="hidden md:block w-8 h-8 rounded-full border border-[#c6c6cd] object-cover hover:ring-2 hover:ring-[#006a61]/30 transition-all text-xs"
               />
             ) : (
               <div 
                 title={user.businessName || "Workspace"}
-                className="hidden md:flex w-8 h-8 rounded-full border border-[#c6c6cd] bg-[#eff4ff] text-[#006a61] items-center justify-center hover:opacity-85 transition-opacity cursor-pointer shadow-sm"
+                className="hidden md:flex w-8 h-8 rounded-full border border-[#c6c6cd] bg-[#eff4ff] text-[#006a61] items-center justify-center hover:ring-2 hover:ring-[#006a61]/30 transition-all shadow-sm"
               >
                 <Building2 size={16} />
               </div>

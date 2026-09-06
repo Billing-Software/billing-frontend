@@ -9,4 +9,8 @@ export interface User {
   token?: string;
   staffId?: number;
   onboardingPending?: boolean;
+  activePlanId?: number;
+  subscriptionStatus?: string;
+  subscriptionExpiresAt?: string;
+  isTrial?: boolean;
 }

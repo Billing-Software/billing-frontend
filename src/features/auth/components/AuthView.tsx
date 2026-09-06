@@ -933,7 +933,7 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
                   href={`${MARKETING_URL}/#/pricing`}
                   className="text-[11px] text-[#006a61] hover:underline font-bold transition-all"
                 >
-                  Create an Account
+                  ⚡ Start 7-Day Free Trial
                 </a>
               </div>
             )}

@@ -8,3 +8,4 @@ export * from './user.types';
 export * from './auth.types';
 export * from './branch.types';
 export * from './businessConfig.types';
+export * from './subscription.types';

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { 
   Building, 
@@ -18,27 +19,74 @@ import {
   Info,
   LogOut,
   ShieldAlert,
-  Power
+  Power,
+  Send,
+  Radio,
+  Palette,
+  Globe,
+  Crown,
+  ArrowRight,
+  Sparkles,
+  Store
 } from 'lucide-react';
+import SubscriptionView from '../Subscription/SubscriptionView';
 import { businessService } from '../../services/business.service';
 import { settingsService } from '../../services/settings.service';
-import { whatsAppService, WhatsAppAccountStatus, WhatsAppTemplate } from '../../services/whatsapp.service';
+import { smsService, BusinessSmsSettings } from '../../services/sms.service';
 import { categoryService, Category } from '../../services/category.service';
 import { apiClient } from '../../services/api.client';
 import { useToast } from '../../hooks/useToast';
-import { useMetaSDK } from '../../hooks/useMetaSDK';
 import { authService } from '../../services/auth.service';
 import { useBusinessConfig } from '../../context/BusinessConfigContext';
 import { useAuth } from '../../hooks/useAuth';
+import InvoiceCustomizerStudio from '../../components/invoice/InvoiceCustomizerStudio';
+import { SUPPORTED_LANGUAGES, SupportedLanguage } from '../../utils/i18n';
+
+type SettingsTab = 'business' | 'invoiceDesigner' | 'subscription';
 
 export default function Settings() {
   const { showToast } = useToast();
   const { handleLogout, currentUser: user } = useAuth();
   const { config, updateConfig, refreshConfig } = useBusinessConfig();
   const [profile, setProfile] = useState<any>(null);
-  const [waStatus, setWaStatus] = useState<WhatsAppAccountStatus | null>(null);
-  const [isWaConnecting, setIsWaConnecting] = useState<boolean>(false);
+  const [smsSettings, setSmsSettings] = useState<BusinessSmsSettings | null>(null);
+  const [senderId, setSenderId] = useState<string>('');
+  const [dltEntityId, setDltEntityId] = useState<string>('');
+  const [invoiceTemplateId, setInvoiceTemplateId] = useState<string>('');
+  const [templateBody, setTemplateBody] = useState<string>('');
+  const [isSmsActive, setIsSmsActive] = useState<boolean>(true);
+  const [isSavingSms, setIsSavingSms] = useState<boolean>(false);
+  const [showTestSmsModal, setShowTestSmsModal] = useState<boolean>(false);
+  const [testPhone, setTestPhone] = useState<string>('');
+  const [isSendingTestSms, setIsSendingTestSms] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab') as SettingsTab;
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>(() => {
+    return tabFromUrl || 'business';
+  });
+
+  useEffect(() => {
+    if (tabFromUrl && (tabFromUrl === 'business' || tabFromUrl === 'invoiceDesigner' || tabFromUrl === 'subscription')) {
+      setSettingsTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
+
+  const handleSelectSettingsTab = (tab: SettingsTab) => {
+    setSettingsTab(tab);
+    setSearchParams({ tab });
+  };
+  const [selectedLang, setSelectedLang] = useState<SupportedLanguage>(() => {
+    return (localStorage.getItem('billcom_lang') as SupportedLanguage) || 'en';
+  });
+
+  const handleSelectLanguage = (langCode: SupportedLanguage) => {
+    setSelectedLang(langCode);
+    localStorage.setItem('billcom_lang', langCode);
+    window.dispatchEvent(new Event('languagechange'));
+    const matched = SUPPORTED_LANGUAGES.find(l => l.code === langCode);
+    showToast(`Display language updated to ${matched?.name || langCode} (${matched?.nativeName})!`, 'success');
+  };
 
   // Password reset local states
   const [currentPass, setCurrentPass] = useState<string>('');
@@ -65,46 +113,41 @@ export default function Settings() {
   const [showLogoOnReceipt, setShowLogoOnReceipt] = useState<boolean>(true);
   const [receiptTemplateType, setReceiptTemplateType] = useState<string>('Thermal80mm');
 
-  // WhatsApp Cloud API states are now in waStatus
-  const [waTemplate, setWaTemplate] = useState<WhatsAppTemplate | null>(null);
-
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const [profileData, waStatusData] = await Promise.all([
-        businessService.getProfile(),
-        whatsAppService.getStatus()
+      const [profileData, smsData] = await Promise.all([
+        businessService.getProfile().catch(() => null),
+        smsService.getSettings().catch(() => null)
       ]);
       
-      setProfile(profileData);
-      setWaStatus(waStatusData);
-
-      if (waStatusData?.status === 'Connected') {
-        whatsAppService.getTemplates().then(templates => {
-          if (templates && templates.length > 0) setWaTemplate(templates[0]);
-        }).catch(() => {});
-      }
-      setLegalName(profileData.legalName || '');
-      setTradingName(profileData.tradingName || '');
-      setLogoUrl(profileData.logoUrl || '');
-      setWebsite(profileData.website || '');
-      setPhone(profileData.phone || '');
-      setEmail(profileData.email || '');
-      setAddress(profileData.address || '');
-      setCity(profileData.city || '');
-      setState(profileData.state || '');
-      const scheme = profileData.gstScheme || (config?.gstScheme) || 'Regular';
+      const safeProfile = profileData || {};
+      setProfile(safeProfile);
+      setSmsSettings(smsData);
+      setSenderId(smsData?.senderId || '');
+      setDltEntityId(smsData?.dltEntityId || '');
+      setInvoiceTemplateId(smsData?.invoiceTemplateId || '');
+      setTemplateBody(smsData?.templateBody || 'Dear {#var#}, your invoice {#var#} from {#var#} for Rs.{#var#} is ready. View: {#var#}');
+      setIsSmsActive(smsData?.isActive ?? true);
+      setLegalName(safeProfile.legalName || '');
+      setTradingName(safeProfile.tradingName || '');
+      setLogoUrl(safeProfile.logoUrl || '');
+      setWebsite(safeProfile.website || '');
+      setPhone(safeProfile.phone || '');
+      setEmail(safeProfile.email || '');
+      setAddress(safeProfile.address || '');
+      setCity(safeProfile.city || '');
+      setState(safeProfile.state || '');
+      const scheme = safeProfile.gstScheme || (config?.gstScheme) || 'Regular';
       setGstScheme(scheme);
-      setGstIn(profileData.gstIn || '');
+      setGstIn(safeProfile.gstIn || '');
       const isNonGst = scheme.toLowerCase() === 'none' || scheme.toLowerCase() === 'non-gst';
-      setDefaultTaxRate(isNonGst ? 0 : (profileData.defaultTaxRate ?? 18.00));
-      setPricesIncludeTax(profileData.pricesIncludeTax ?? true);
-      setReceiptHeader(profileData.receiptHeader || '');
-      setReceiptFooter(profileData.receiptFooter || '');
-      setShowLogoOnReceipt(profileData.showLogoOnReceipt ?? true);
-      setReceiptTemplateType(profileData.receiptTemplateType || 'Thermal80mm');
-
-      setWaStatus(waStatusData);
+      setDefaultTaxRate(isNonGst ? 0 : (safeProfile.defaultTaxRate ?? 18.00));
+      setPricesIncludeTax(safeProfile.pricesIncludeTax ?? true);
+      setReceiptHeader(safeProfile.receiptHeader || '');
+      setReceiptFooter(safeProfile.receiptFooter || '');
+      setShowLogoOnReceipt(safeProfile.showLogoOnReceipt ?? true);
+      setReceiptTemplateType(safeProfile.receiptTemplateType || 'Thermal80mm');
     } catch (e) {
       console.error('Error fetching settings', e);
     } finally {
@@ -204,119 +247,43 @@ export default function Settings() {
     }
   };
 
-  const metaSDK = useMetaSDK({
-    onSuccess: async (result) => {
-      try {
-        setIsWaConnecting(true);
-        showToast('Exchanging Meta code and retrieving WABA details...', 'info');
-        const status = await whatsAppService.connect({
-          code: result.code,
-          wabaId: result.wabaId,
-          phoneNumberId: result.phoneNumberId,
-          displayPhoneNumber: result.displayPhoneNumber,
-        });
-        setWaStatus(status);
-        setShowWaModal(false);
-        showToast('WhatsApp Business connected successfully via Meta Embedded Signup!', 'success');
-      } catch (err: any) {
-        showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
-      } finally {
-        setIsWaConnecting(false);
-      }
-    },
-    onError: (error) => {
-      showToast('Embedded Signup error: ' + error, 'error');
-      setIsWaConnecting(false);
-    },
-  });
-
-  const [showWaModal, setShowWaModal] = useState<boolean>(false);
-  const [manualCodeInput, setManualCodeInput] = useState<string>('');
-
-  const handleConnectWhatsApp = () => {
-    // Open the WhatsApp Connection Modal
-    setShowWaModal(true);
-  };
-
-  const handleLaunchMetaSDK = () => {
-    setIsWaConnecting(true);
-    const launched = metaSDK.launchEmbeddedSignup();
-    if (!launched) {
-      showToast('Meta SDK popup is not ready or blocked by browser. You can use Demo WABA or manual code.', 'info');
-      setIsWaConnecting(false);
-    }
-  };
-
-  const handleConnectDemoWaba = async () => {
-    setIsWaConnecting(true);
-    try {
-      const status = await whatsAppService.connect({
-        code: 'EAAPXJmR6jU8BSHWhyNFz3rz2lZANRyvsjaONhQE8X5D7LihFf6IkKRDvcB1OS7kIfAXRMXX6xFWp3cGTuSKyuzVPOyt8bVRZBq6jEI50QGdfsDsoHfcZBFVoE7Wb5XKgnFXnPZARn5DegoLy2dsEDZAGRMYWImvkmr9FeSAiZCsYSFM7ZAEn97TxPYrtia1ZCJJjWmZAeSUbwLOAlFEpjXGWvbVAZAh1C8gIXETLJs2hGBqOssFSgMAS0eK3zo3FZBtJ2mZCbQ2xasQMsM2W8N7qsXGGEj0JsQZDZD',
-        wabaId: '1063228732791303',
-        phoneNumberId: '1273696479156949',
-        displayPhoneNumber: '+1 (555) 672-6923',
-      });
-      setWaStatus(status);
-      setShowWaModal(false);
-      showToast('WhatsApp Business connected successfully (Demo WABA)!', 'success');
-
-      // Fetch auto-provisioned template
-      whatsAppService.getTemplates().then(templates => {
-        if (templates && templates.length > 0) setWaTemplate(templates[0]);
-      }).catch(() => {});
-    } catch (err: any) {
-      showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
-    } finally {
-      setIsWaConnecting(false);
-    }
-  };
-
-  const handleConnectManualCode = async (e: React.FormEvent) => {
+  const handleSaveSmsSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualCodeInput.trim()) return;
-    setIsWaConnecting(true);
     try {
-      const status = await whatsAppService.connect({
-        code: manualCodeInput.trim(),
-        wabaId: '1063228732791303',
-        phoneNumberId: '1273696479156949',
-        displayPhoneNumber: '+1 (555) 672-6923',
+      setIsSavingSms(true);
+      const updated = await smsService.saveSettings({
+        senderId: senderId.trim().toUpperCase(),
+        dltEntityId: dltEntityId.trim(),
+        invoiceTemplateId: invoiceTemplateId.trim(),
+        templateBody: templateBody.trim(),
+        isActive: isSmsActive
       });
-      setWaStatus(status);
-      setShowWaModal(false);
-      setManualCodeInput('');
-      showToast('WhatsApp Business connected successfully!', 'success');
-
-      whatsAppService.getTemplates().then(templates => {
-        if (templates && templates.length > 0) setWaTemplate(templates[0]);
-      }).catch(() => {});
+      setSmsSettings(updated);
+      showToast("SMS gateway & DLT parameters saved securely!", "success");
     } catch (err: any) {
-      showToast('Connection failed: ' + (err.response?.data?.error || err.message), 'error');
+      showToast("Error saving SMS settings: " + (err.response?.data?.error || err.message), "error");
     } finally {
-      setIsWaConnecting(false);
+      setIsSavingSms(false);
     }
   };
 
-  const handleDisconnectWhatsApp = async () => {
-    if (!confirm('Are you sure you want to disconnect your WhatsApp Business account? You will no longer be able to send invoices via WhatsApp.')) return;
+  const handleSendTestSms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testPhone.trim()) return;
     try {
-      await whatsAppService.disconnect();
-      setWaStatus({ id: 0, status: 'NotConnected' });
-      setWaTemplate(null);
-      showToast('WhatsApp disconnected.', 'success');
+      setIsSendingTestSms(true);
+      const res = await smsService.sendTestSms(testPhone.trim());
+      if (res.success) {
+        showToast(res.message, "success");
+        setShowTestSmsModal(false);
+        setTestPhone('');
+      } else {
+        showToast(res.message, "error");
+      }
     } catch (err: any) {
-      showToast('Disconnect failed: ' + (err.response?.data?.error || err.message), 'error');
-    }
-  };
-
-  const handleSyncTemplate = async () => {
-    try {
-      showToast('Provisioning BillCom Invoice Template on WABA...', 'info');
-      const t = await whatsAppService.syncTemplates();
-      setWaTemplate(t);
-      showToast('BillCom Invoice Template synced successfully!', 'success');
-    } catch (err: any) {
-      showToast('Template sync failed: ' + (err.response?.data?.error || err.message), 'error');
+      showToast("Failed to dispatch test SMS: " + (err.response?.data?.error || err.message), "error");
+    } finally {
+      setIsSendingTestSms(false);
     }
   };
 
@@ -333,9 +300,177 @@ export default function Settings() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
+      className="space-y-4"
     >
+      {/* Business Identity & Subscription HUD Banner (Mirroring mobile Settings header) */}
+      {(() => {
+        const planId = profile?.activePlanId ?? user?.activePlanId ?? 1;
+        const planName = planId === 3 ? 'Enterprise Chain' : (planId === 2 ? 'Growth Business' : 'Starter Shop');
+        const status = profile?.subscriptionStatus || user?.subscriptionStatus || 'Active';
+        const isTrial = (profile?.isTrial ?? user?.isTrial) || status.toLowerCase() === 'trial';
+        const isTrialExpired = status.toLowerCase() === 'trialexpired';
+        const storeName = profile?.tradingName || profile?.legalName || user?.businessName || 'Your Store Business';
+        const category = profile?.businessCategory || 'General Retail';
+        const gstin = profile?.gstIn || '';
+
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              {profile?.logoUrl && profile.logoUrl.trim() ? (
+                <img 
+                  src={profile.logoUrl} 
+                  alt="Store Logo" 
+                  className="w-13 h-13 rounded-xl border border-slate-200 object-cover bg-white shadow-xs shrink-0" 
+                />
+              ) : (
+                <div className="w-13 h-13 rounded-xl bg-gradient-to-br from-[#004d46] to-[#006a61] text-white flex items-center justify-center font-black text-xl shadow-xs shrink-0">
+                  {storeName.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-display font-black text-base sm:text-lg text-slate-900 leading-tight">
+                    {storeName}
+                  </h2>
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border shadow-2xs ${
+                    planId >= 2 ? 'bg-amber-50 text-amber-900 border-amber-300' : 'bg-teal-50 text-[#006a61] border-teal-200'
+                  }`}>
+                    <Crown size={11} className={planId >= 2 ? 'text-amber-600' : 'text-[#006a61]'} />
+                    {planName}
+                  </span>
+                  {isTrial && (
+                    <span className="inline-flex items-center text-[9.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                      ⚡ 7-Day Free Trial
+                    </span>
+                  )}
+                  {isTrialExpired && (
+                    <span className="inline-flex items-center text-[9.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300">
+                      ⚠️ Trial Expired
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 font-medium flex items-center gap-2 flex-wrap">
+                  <span>{category}</span>
+                  {gstin && <span className="font-mono text-[#006a61] font-semibold">• GSTIN: {gstin}</span>}
+                  <span className="text-slate-400">• Outlets: {profile?.allowedBranches === -1 ? 'Unlimited' : (profile?.allowedBranches ?? 1)}</span>
+                  <span className="text-slate-400">• Staff: {profile?.allowedStaff === -1 ? 'Unlimited' : (profile?.allowedStaff ?? 2)}</span>
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleSelectSettingsTab('subscription')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                isTrialExpired
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                  : isTrial
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                  : settingsTab === 'subscription'
+                  ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                  : 'bg-[#006a61] hover:bg-[#005a52] text-white'
+              }`}
+            >
+              <Crown size={14} />
+              <span>{isTrialExpired ? 'Activate Plan Now' : isTrial ? 'Manage Trial & Plans' : 'View Quotas & Plans'}</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Settings Top Tab Navigation */}
+      <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm w-fit">
+        <button
+          onClick={() => handleSelectSettingsTab('business')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            settingsTab === 'business'
+              ? 'bg-[#006a61] text-white shadow-sm'
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Building size={14} />
+          Business & Tax
+        </button>
+        <button
+          onClick={() => handleSelectSettingsTab('invoiceDesigner')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            settingsTab === 'invoiceDesigner'
+              ? 'bg-[#006a61] text-white shadow-sm'
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Palette size={14} />
+          Invoice Designer Studio
+        </button>
+        <button
+          onClick={() => handleSelectSettingsTab('subscription')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            settingsTab === 'subscription'
+              ? 'bg-[#006a61] text-white shadow-sm'
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Crown size={14} />
+          Subscription & Plans
+        </button>
+      </div>
+
+      {/* Subscription & Plans Tab */}
+      {settingsTab === 'subscription' && (
+        <SubscriptionView />
+      )}
+
+      {/* Invoice Designer Studio Tab */}
+      {settingsTab === 'invoiceDesigner' && (
+        <div className="h-[calc(100vh-180px)]">
+          <InvoiceCustomizerStudio
+            businessProfile={profile}
+            onSave={(settings) => {
+              showToast('Invoice design saved!', 'success');
+            }}
+          />
+        </div>
+      )}
+
+      {/* Business Settings Tab */}
+      {settingsTab === 'business' && (
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       <div className="lg:col-span-8 space-y-6">
+
+        {/* Display Language Selection Card */}
+        <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-teal-50 text-[#006a61] rounded-xl border border-teal-100">
+              <Globe size={20} />
+            </div>
+            <div>
+              <h4 className="font-display font-bold text-xs text-[#0b1c30]">App Display Language (యాప్ భాష / भाषा)</h4>
+              <p className="text-[11px] text-slate-500 font-medium">Select your preferred language for all menus, billing labels, and reports.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
+            {SUPPORTED_LANGUAGES.map((lang) => {
+              const isSelected = selectedLang === lang.code;
+              return (
+                <button
+                  key={lang.code}
+                  type="button"
+                  onClick={() => handleSelectLanguage(lang.code)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-white text-[#006a61] shadow-xs border border-teal-200 font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>{lang.flag}</span>
+                  <span>{lang.nativeName}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
         
         {/* Business Profile Panel Form */}
         <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm overflow-hidden">
@@ -712,194 +847,140 @@ export default function Settings() {
           </form>
         </section>
 
-        {/* Receipt Customization & Thermal Layout Section */}
-        <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm overflow-hidden mt-6">
-          <div className="p-5 border-b bg-[#f8f9ff] flex items-center gap-2.5">
-            <Building size={18} className="text-[#006f66]" />
+        {/* Invoice Designer CTA Banner */}
+        <section className="bg-gradient-to-r from-[#006a61]/10 to-[#006a61]/5 rounded-xl border border-[#006a61]/20 p-5 flex items-center justify-between mt-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-[#006a61] text-white rounded-xl">
+              <Palette size={20} />
+            </div>
             <div>
-              <h3 className="font-display font-bold text-sm text-[#0b1c30]">Receipt Customization &amp; Thermal Layout</h3>
-              <p className="font-sans text-[10px] text-[#7c839b] font-medium uppercase mt-0.5">Customize layout types, logo toggles, headers, and footers for thermal print receipts.</p>
+              <h3 className="font-display font-bold text-sm text-[#0b1c30]">Invoice Designer Studio</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Design beautiful invoices with 5 themes, UPI QR codes, brand colors, and live preview</p>
             </div>
           </div>
-
-          <form onSubmit={handleSaveReceiptSettings} className="p-5 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Receipt Template Type</label>
-                <select 
-                  value={receiptTemplateType}
-                  onChange={(e) => setReceiptTemplateType(e.target.value)}
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none h-9"
-                >
-                  <option value="Thermal80mm">Thermal 80mm Printer (48 Chars)</option>
-                  <option value="Thermal58mm">Thermal 58mm Printer (32 Chars)</option>
-                  <option value="StandardA4">Standard A4 Layout</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2 pt-5">
-                <input 
-                  id="showLogoOnReceiptCheckbox"
-                  type="checkbox" 
-                  checked={showLogoOnReceipt}
-                  onChange={(e) => setShowLogoOnReceipt(e.target.checked)}
-                  className="w-4 h-4 text-[#006a61] border border-[#c6c6cd] rounded focus:ring-0"
-                />
-                <label htmlFor="showLogoOnReceiptCheckbox" className="text-xs font-semibold text-[#0b1c30]">
-                  Print Business Logo on Invoices
-                </label>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Receipt Header Text</label>
-                <textarea 
-                  value={receiptHeader}
-                  onChange={(e) => setReceiptHeader(e.target.value)}
-                  placeholder="e.g. Welcome to BillCom Retail Spa! Visit again."
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none h-16 resize-none"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Receipt Footer Text</label>
-                <textarea 
-                  value={receiptFooter}
-                  onChange={(e) => setReceiptFooter(e.target.value)}
-                  placeholder="e.g. For support contact: support@business.com. Thank you!"
-                  className="w-full text-xs font-semibold p-2 bg-white border border-[#c6c6cd] rounded focus:border-[#006a61] outline-none h-16 resize-none"
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-[#e2e8f0]/40 pt-4 flex justify-end">
-              <button 
-                type="submit"
-                className="bg-[#006a61] text-white text-xs font-semibold px-4.5 py-2 rounded-lg flex items-center gap-1.5 hover:bg-opacity-95"
-              >
-                <Save size={13} />
-                <span>Save Receipt Customizations</span>
-              </button>
-            </div>
-          </form>
+          <button
+            onClick={() => setSettingsTab('invoiceDesigner')}
+            className="px-4 py-2 bg-[#006a61] text-white text-xs font-bold rounded-lg hover:bg-[#005a52] transition-colors shadow-sm"
+          >
+            Open Designer →
+          </button>
         </section>
 
-        {/* WhatsApp Cloud API Integration */}
+        {/* SMS Gateway & DLT Configuration */}
         <section className="bg-white rounded-xl border border-[#e2e8f0]/80 shadow-sm overflow-hidden">
           <div className="p-5 border-b bg-[#f8f9ff] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <MessageSquare size={18} className="text-[#006f66]" />
               <div>
-                <h3 className="font-display font-bold text-sm text-[#0b1c30]">WhatsApp Cloud API</h3>
-                <p className="font-sans text-[10px] text-[#7c839b] font-medium uppercase mt-0.5">Send invoices & notifications directly via your WhatsApp Business account.</p>
+                <h3 className="font-display font-bold text-sm text-[#0b1c30]">SMS &amp; DLT Gateway (Exotel Engine)</h3>
+                <p className="font-sans text-[10px] text-[#7c839b] font-medium uppercase mt-0.5">Automated invoice SMS dispatches with Indian Telecom DLT Compliance.</p>
               </div>
             </div>
 
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${waStatus?.status === 'Connected' ? 'bg-[#e2f3eb] text-[#1e8e3e]' : 'bg-[#ffdad6] text-[#ba1a1a]'}`}>
-              {waStatus?.status === 'Connected' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-              <span>{waStatus?.status === 'Connected' ? 'Connected' : 'Not Connected'}</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${isSmsActive && senderId ? 'bg-[#e2f3eb] text-[#1e8e3e]' : 'bg-[#ffdad6] text-[#ba1a1a]'}`}>
+              {isSmsActive && senderId ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+              <span>{isSmsActive && senderId ? 'Configured & Active' : 'Setup Required'}</span>
             </div>
           </div>
 
-          <div className="p-5 space-y-5">
-            {/* Connection Status Card */}
-            <div className={`rounded-xl p-6 text-center ${waStatus?.status === 'Connected' ? 'bg-[#f0fdf4] border border-[#bbf7d0]' : 'bg-[#f9fafb] border border-[#e5e7eb]'}`}>
-              <div className={`w-14 h-14 mx-auto rounded-2xl flex items-center justify-center mb-3 ${waStatus?.status === 'Connected' ? 'bg-[#25d366]/15' : 'bg-[#6b7280]/10'}`}>
-                {waStatus?.status === 'Connected'
-                  ? <CheckCircle2 size={28} className="text-[#25d366]" />
-                  : <Unlink size={28} className="text-[#6b7280]" />
-                }
+          <form onSubmit={handleSaveSmsSettings} className="p-5 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">
+                  Sender ID / Header <span className="text-[#ba1a1a]">*</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={10}
+                  value={senderId}
+                  onChange={(e) => setSenderId(e.target.value.toUpperCase())}
+                  placeholder="e.g. SRILAX"
+                  className="w-full text-xs font-mono font-bold p-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none tracking-wider"
+                  required
+                />
+                <span className="text-[9px] text-[#7c839b] mt-1 block">Approved 6-character DLT Header</span>
               </div>
-              <h4 className={`font-display font-bold text-lg ${waStatus?.status === 'Connected' ? 'text-[#16a34a]' : 'text-[#6b7280]'}`}>
-                {waStatus?.status === 'Connected' ? 'Connected' : 'Not Connected'}
-              </h4>
-              <p className="text-xs text-[#6b7280] mt-1 leading-relaxed">
-                {waStatus?.status === 'Connected'
-                  ? 'WhatsApp Business API is active. You can send invoices directly to customers.'
-                  : 'Connect your WhatsApp Business account via Meta Embedded Signup to start sending invoices.'
-                }
-              </p>
 
-              {waStatus?.status === 'Connected' && waStatus?.displayPhoneNumber && (
-                <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-[#e5e7eb]">
-                  <Phone size={14} className="text-[#25d366]" />
-                  <span className="text-sm font-semibold text-[#111827]">{waStatus.displayPhoneNumber}</span>
-                </div>
-              )}
+              <div>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">
+                  DLT Principal Entity ID <span className="text-[#ba1a1a]">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={dltEntityId}
+                  onChange={(e) => setDltEntityId(e.target.value)}
+                  placeholder="e.g. 1201159123456789012"
+                  className="w-full text-xs font-mono p-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none"
+                  required
+                />
+                <span className="text-[9px] text-[#7c839b] mt-1 block">Registered Enterprise Entity ID</span>
+              </div>
 
-              {waStatus?.status === 'Connected' && waStatus?.wabaId && (
-                <p className="text-[10px] text-[#9ca3af] mt-2">WABA: {waStatus.wabaId}</p>
-              )}
+              <div>
+                <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">
+                  DLT Invoice Template ID <span className="text-[#ba1a1a]">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={invoiceTemplateId}
+                  onChange={(e) => setInvoiceTemplateId(e.target.value)}
+                  placeholder="e.g. 1207161987654321098"
+                  className="w-full text-xs font-mono p-2.5 bg-white border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none"
+                  required
+                />
+                <span className="text-[9px] text-[#7c839b] mt-1 block">Approved Content Template ID</span>
+              </div>
             </div>
 
-            {/* Managed WhatsApp Template Card */}
-            {waStatus?.status === 'Connected' && (
-              <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Tag size={16} className="text-[#006f66]" />
-                    <h4 className="font-display font-bold text-xs text-[#0b1c30]">Auto-Managed Invoice Template</h4>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSyncTemplate}
-                    className="px-3 py-1 bg-white border border-[#cbd5e1] rounded-lg text-[11px] font-bold text-[#0f172a] hover:bg-[#f1f5f9] transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckCircle2 size={12} className="text-[#006f66]" />
-                    Sync / Provision Template
-                  </button>
-                </div>
-
-                <div className="bg-white rounded-lg p-3 border border-[#e2e8f0] flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-mono font-bold text-[#006f66]">{waTemplate?.templateName || 'billcom_invoice_v1'}</span>
-                    <span className="ml-2 text-[10px] text-[#64748b] uppercase font-semibold">({waTemplate?.category || 'UTILITY'})</span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#dcfce7] text-[#166534]">
-                    {waTemplate?.status || 'APPROVED'}
-                  </span>
-                </div>
-
-                <p className="text-[11px] text-[#475569] leading-relaxed">
-                  {waTemplate?.bodyText || 'Hello {{1}}, your invoice {{2}} for {{3}} has been generated by {{4}}.\n\nView and download your digital receipt:\n{{5}}\n\nThank you for your business!'}
-                </p>
-              </div>
-            )}
-
-            {/* Connect / Disconnect Button */}
-            <div className="flex justify-center">
-              {waStatus?.status === 'Connected' ? (
-                <button
-                  type="button"
-                  onClick={handleDisconnectWhatsApp}
-                  className="px-6 py-2.5 rounded-xl text-xs font-bold border border-[#fca5a5] text-[#dc2626] hover:bg-[#fef2f2] transition-colors flex items-center gap-2 cursor-pointer"
-                >
-                  <Unlink size={14} />
-                  Disconnect WhatsApp
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleConnectWhatsApp}
-                  disabled={isWaConnecting}
-                  className="px-6 py-2.5 rounded-xl text-xs font-bold bg-[#25d366] text-white hover:bg-[#22c55e] transition-colors flex items-center gap-2 disabled:opacity-60 cursor-pointer"
-                >
-                  {isWaConnecting ? <Loader2 size={14} className="animate-spin" /> : <Link size={14} />}
-                  {isWaConnecting ? 'Connecting...' : 'Connect WhatsApp'}
-                </button>
-              )}
+            <div>
+              <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">
+                Approved DLT Template Body
+              </label>
+              <textarea
+                value={templateBody}
+                onChange={(e) => setTemplateBody(e.target.value)}
+                placeholder="Dear {#var#}, your invoice {#var#} from {#var#} for Rs.{#var#} is ready. View: {#var#}"
+                className="w-full text-xs font-medium p-3 bg-slate-50 border border-[#c6c6cd] rounded-lg focus:border-[#006a61] outline-none h-20 resize-none font-sans"
+              />
+              <span className="text-[9px] text-[#7c839b] mt-0.5 block">Placeholders: 1=Customer Name, 2=Invoice No, 3=Business Name, 4=Amount, 5=Invoice Link</span>
             </div>
 
-            {/* Info Box */}
-            <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-xl p-4 space-y-2">
-              <div className="flex items-center gap-2">
-                <Info size={14} className="text-[#0284c7]" />
-                <span className="text-xs font-bold text-[#0284c7]">How it works</span>
+            <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <div>
+                <span className="text-xs font-bold text-[#0b1c30] block">Automated Dispatch Active</span>
+                <span className="text-[10px] text-[#7c839b]">Automatically transmit SMS invoices when billing customers</span>
               </div>
-              <ul className="text-[11px] text-[#374151] space-y-1.5 leading-relaxed ml-5">
-                <li>• Messages are sent securely through your own WhatsApp Business account</li>
-                <li>• Send invoice PDFs directly to your customers' WhatsApp</li>
-                <li>• Get real-time delivery and read receipts for every message</li>
-                <li>• Access tokens are AES-256 encrypted and never exposed to the browser</li>
-              </ul>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSmsActive}
+                  onChange={(e) => setIsSmsActive(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#006a61]"></div>
+              </label>
             </div>
-          </div>
+
+            <div className="border-t border-[#e2e8f0]/40 pt-4 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowTestSmsModal(true)}
+                className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Send size={13} className="text-[#006a61]" />
+                <span>Send Test SMS</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={isSavingSms}
+                className="bg-[#006a61] text-white text-xs font-semibold px-5 py-2.5 rounded-lg flex items-center gap-1.5 hover:bg-opacity-95 disabled:opacity-50 cursor-pointer shadow-sm"
+              >
+                {isSavingSms ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                <span>Save SMS Settings</span>
+              </button>
+            </div>
+          </form>
         </section>
 
 
@@ -1000,10 +1081,68 @@ export default function Settings() {
         </section>
       </div>
 
+
       {/* Right Column details */}
       <aside className="lg:col-span-4 space-y-4">
+        {/* Subscription & Resource Quotas Card (Mirroring mobile Settings Billing section) */}
+        {(() => {
+          const planId = profile?.activePlanId ?? user?.activePlanId ?? 1;
+          const planName = planId === 3 ? 'Enterprise Chain' : (planId === 2 ? 'Growth Business' : 'Starter Shop');
+          const isTrial = (profile?.isTrial ?? user?.isTrial) || (profile?.subscriptionStatus || '').toLowerCase() === 'trial';
+          const isTrialExpired = (profile?.subscriptionStatus || '').toLowerCase() === 'trialexpired';
+
+          return (
+            <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-sm space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 text-slate-800">
+                  <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg border border-amber-200">
+                    <Crown size={16} />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-xs text-slate-900 leading-tight">Subscription Tier</h4>
+                    <p className="text-[10px] text-slate-500 font-semibold">{planName}</p>
+                  </div>
+                </div>
+                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                  isTrialExpired ? 'bg-rose-100 text-rose-800 border border-rose-300' : isTrial ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                }`}>
+                  {isTrialExpired ? 'Expired' : isTrial ? '⚡ Trial' : 'Active'}
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-slate-600 font-medium">Store Outlets:</span>
+                  <span className="font-bold text-slate-900 font-mono">
+                    {profile?.allowedBranches === -1 ? 'Unlimited (∞)' : `${profile?.allowedBranches ?? 1} Max`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-slate-600 font-medium">Staff Profiles:</span>
+                  <span className="font-bold text-slate-900 font-mono">
+                    {profile?.allowedStaff === -1 ? 'Unlimited (∞)' : `${profile?.allowedStaff ?? 2} Seats`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-slate-600 font-medium">Tax Invoicing:</span>
+                  <span className="font-bold text-emerald-600 uppercase font-mono">Unlimited</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSelectSettingsTab('subscription')}
+                className="w-full py-2 bg-teal-50 hover:bg-teal-100/80 border border-teal-200 text-[#006a61] text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>Manage & Upgrade Plan</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+          );
+        })()}
+
         <div className="bg-white rounded-xl border p-5 shadow-sm space-y-3">
-          <h4 className="font-display font-bold text-xs text-[#0b1c30] uppercase tracking-wider mb-2">Platform Meta Details</h4>
+          <h4 className="font-display font-bold text-xs text-[#0b1c30] uppercase tracking-wider mb-2">Platform Engine Details</h4>
           
           <div className="p-3 bg-[#eff4ff] border rounded-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1026,101 +1165,72 @@ export default function Settings() {
           </div>
         </div>
       </aside>
+      </div>
+      )}
 
-      {/* WhatsApp Connection Modal Overlay */}
-      {showWaModal && (
+      {/* Test SMS Modal */}
+      {showTestSmsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full p-6 space-y-5"
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-5"
           >
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-[#25d366]/15 rounded-xl text-[#25d366]">
-                  <MessageSquare size={20} />
+                <div className="p-2 bg-[#006a61]/10 rounded-xl text-[#006a61]">
+                  <Send size={20} />
                 </div>
                 <div>
-                  <h3 className="font-display font-bold text-base text-[#0b1c30]">Connect WhatsApp Business</h3>
-                  <p className="text-xs text-slate-500">BillCom Meta Embedded Signup & Onboarding</p>
+                  <h3 className="font-display font-bold text-base text-[#0b1c30]">Send Test SMS</h3>
+                  <p className="text-xs text-slate-500">Verify Exotel gateway and Sender ID headers</p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowWaModal(false)}
+                onClick={() => setShowTestSmsModal(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <XCircle size={20} />
               </button>
             </div>
 
-            <div className="space-y-3">
-              {/* Option 1: Live Meta Embedded Signup */}
-              <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                    <CheckCircle2 size={14} className="text-[#25d366]" /> Option A: Meta Embedded Signup (Live)
-                  </span>
-                  <span className="px-2 py-0.5 text-[9px] font-bold uppercase bg-emerald-200 text-emerald-800 rounded">Official</span>
-                </div>
-                <p className="text-[11px] text-emerald-700 leading-relaxed">
-                  Opens Facebook Login dialog to connect your WABA and authorize BillCom automatically.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleLaunchMetaSDK}
-                  disabled={isWaConnecting}
-                  className="w-full py-2.5 bg-[#25d366] hover:bg-[#22c55e] text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {isWaConnecting ? <Loader2 size={14} className="animate-spin" /> : <Link size={14} />}
-                  <span>Launch Meta Embedded Signup</span>
-                </button>
-              </div>
-
-              {/* Option 2: 1-Click Demo Sandbox WABA */}
+            <form onSubmit={handleSendTestSms} className="space-y-4">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Tag size={14} className="text-[#006f66]" /> Option B: Instant Demo WABA (Development)
-                  </span>
-                  <span className="px-2 py-0.5 text-[9px] font-bold uppercase bg-blue-100 text-blue-800 rounded">1-Click Test</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Active Sender ID:</span>
+                  <span className="font-mono font-bold text-[#006a61]">{senderId || 'NOT SET'}</span>
                 </div>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Connects a pre-configured sandbox WABA with auto-provisioned invoice templates for instant testing.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleConnectDemoWaba}
-                  disabled={isWaConnecting}
-                  className="w-full py-2.5 bg-[#006f66] hover:bg-[#005a53] text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {isWaConnecting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                  <span>Connect Demo WABA Sandbox</span>
-                </button>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">DLT Entity ID:</span>
+                  <span className="font-mono text-slate-700">{dltEntityId || 'NOT SET'}</span>
+                </div>
               </div>
 
-              {/* Option 3: Manual Authorization Code */}
-              <form onSubmit={handleConnectManualCode} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <span className="text-xs font-bold text-slate-800">Option C: Manual Meta Code</span>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={manualCodeInput}
-                    onChange={(e) => setManualCodeInput(e.target.value)}
-                    placeholder="Paste Meta OAuth Code"
-                    className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isWaConnecting || !manualCodeInput.trim()}
-                    className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer"
-                  >
-                    Submit
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Recipient Mobile Number
+                </label>
+                <input
+                  type="text"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="e.g. 9876543210"
+                  className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-800 focus:border-[#006a61] outline-none"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSendingTestSms || !testPhone.trim()}
+                className="w-full py-3 bg-[#006a61] hover:bg-[#00554e] text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm"
+              >
+                {isSendingTestSms ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                <span>{isSendingTestSms ? 'Dispatching Test SMS...' : 'Dispatch Test SMS'}</span>
+              </button>
+            </form>
           </motion.div>
         </div>
       )}

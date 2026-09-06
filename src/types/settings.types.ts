@@ -8,8 +8,4 @@ export interface BusinessProfile {
   defaultTaxRate: string;
   pricesIncludeTax: boolean;
 }
-
-// Old WhatsAppSettings interface has been replaced.
-// New types are in services/whatsapp.service.ts:
-//   - WhatsAppAccountStatus
-//   - MessageLog
+// SMS settings interfaces are defined in services/sms.service.ts
