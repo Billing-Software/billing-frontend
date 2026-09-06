@@ -68,7 +68,7 @@ function Help() {
   );
 }
 
-const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || 'http://localhost:5173';
+const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || '';
 
 function ExternalRedirect({ url }: { url: string }) {
   React.useEffect(() => {

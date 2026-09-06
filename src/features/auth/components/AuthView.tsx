@@ -22,7 +22,7 @@ import { authService } from '../../../services/auth.service';
 import { apiClient } from '../../../services/api.client';
 import logo from '../../../assets/BillCom-full.svg';
 
-const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || 'http://localhost:5173';
+const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || '';
 
 interface AuthViewProps {
   onLoginSuccess: (user: User) => void;
