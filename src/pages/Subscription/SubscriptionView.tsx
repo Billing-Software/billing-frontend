@@ -33,7 +33,6 @@ import { razorpayService, loadRazorpayScript } from '../../services/razorpay.ser
 import { SubscriptionOverview, SubscriptionPlan } from '../../types/subscription.types';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
-import { RAZORPAY_KEY_ID } from '../../config/env';
 
 export default function SubscriptionView() {
   const { showToast } = useToast();
@@ -68,7 +67,6 @@ export default function SubscriptionView() {
     const basePrice = billingCycle === 'yearly' ? upgradeModalPlan.yearlyPrice : upgradeModalPlan.monthlyPrice;
     const gst = Math.round(basePrice * 0.18);
     const total = basePrice + gst;
-    const amountInPaise = total * 100;
 
     try {
       setIsProcessingUpgrade(true);
@@ -83,13 +81,13 @@ export default function SubscriptionView() {
 
       // 2. Fetch Razorpay public key ID & config
       const config = await razorpayService.getConfig();
-      const rzpKey = config.keyId || RAZORPAY_KEY_ID || '';
+      const rzpKey = config.keyId;
+      if (!rzpKey) throw new Error('Secure payment gateway configuration is unavailable.');
 
       // 3. STEP 1: Call Backend to Create Order (POST /api/create-order)
       const order = await razorpayService.createOrder({
-        amount: amountInPaise,
-        currency: 'INR',
-        receipt: `sub_${upgradeModalPlan.id}_${Date.now()}`
+        planId: upgradeModalPlan.id,
+        billingCycle
       });
 
       if (!order || !order.order_id) {
@@ -103,20 +101,37 @@ export default function SubscriptionView() {
         currency: order.currency || 'INR',
         name: 'BillCom POS',
         description: `${upgradeModalPlan.name} Subscription (${billingCycle === 'yearly' ? 'Annual' : 'Monthly'})`,
+        image: 'https://billcom.app/assets/BillCom-B.png',
         order_id: order.order_id,
         prefill: {
           name: currentUser?.name || currentUser?.username || 'BillCom Merchant',
           email: currentUser?.email || 'merchant@billcom.in',
           contact: ''
         },
+        notes: {
+          plan_id: String(upgradeModalPlan.id),
+          plan_name: upgradeModalPlan.name,
+          billing_cycle: billingCycle,
+          business_id: String(currentUser?.businessId || '')
+        },
         theme: {
-          color: '#006a61'
+          color: '#006a61',
+          backdrop_color: 'rgba(15, 23, 42, 0.65)'
         },
         modal: {
+          confirm_close: true,
+          backdropclose: false,
+          escape: true,
+          handleback: true,
+          animation: true,
           ondismiss: () => {
             setIsProcessingUpgrade(false);
             showToast('Payment window closed. Subscription was not upgraded.', 'info');
           }
+        },
+        retry: {
+          enabled: true,
+          max_count: 3
         },
         handler: async (response: {
           razorpay_payment_id: string;
@@ -131,19 +146,14 @@ export default function SubscriptionView() {
               razorpay_signature: response.razorpay_signature
             });
 
+            if (verification?.pending_capture) {
+              showToast('Payment authorized. Your subscription will activate automatically after Razorpay confirms capture.', 'info');
+              setUpgradeModalPlan(null);
+              return;
+            }
             if (!verification || !verification.success) {
               throw new Error(verification?.message || 'Payment signature verification failed.');
             }
-
-            // Record verified subscription upgrade in the database
-            await subscriptionService.upgradeSubscription({
-              planId: upgradeModalPlan.id,
-              billingCycle,
-              paymentMethod: 'Razorpay',
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpayOrderId: response.razorpay_order_id,
-              razorpaySignature: response.razorpay_signature
-            });
 
             showToast(`Payment of ₹${total} verified! Upgraded to ${upgradeModalPlan.name}!`, 'success');
             setUpgradeModalPlan(null);
@@ -161,8 +171,10 @@ export default function SubscriptionView() {
       // Handle payment.failed event
       rzp.on('payment.failed', (response: any) => {
         setIsProcessingUpgrade(false);
-        const failDesc = response.error?.description || response.error?.reason || 'Transaction failed.';
-        showToast(`Payment declined: ${failDesc}`, 'error');
+        const error = response?.error || {};
+        const failDesc = error.description || error.reason || 'Transaction failed.';
+        const errorCode = error.code ? `[${error.code}] ` : '';
+        showToast(`Payment declined: ${errorCode}${failDesc}`, 'error');
       });
 
       rzp.open();
@@ -181,6 +193,8 @@ export default function SubscriptionView() {
   };
 
   const handleUpiPayment = async () => {
+    showToast('Direct UPI activation is unavailable. Please complete payment through the secure Razorpay checkout.', 'info');
+    return;
     if (!upgradeModalPlan) return;
     const basePrice = billingCycle === 'yearly' ? upgradeModalPlan.yearlyPrice : upgradeModalPlan.monthlyPrice;
     const gst = Math.round(basePrice * 0.18);

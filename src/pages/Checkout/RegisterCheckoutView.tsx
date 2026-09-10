@@ -17,25 +17,10 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import logo from '../../assets/BillCom-full.svg';
+import logoText from '../../assets/BillCom-text.svg';
 
 import { API_BASE_URL, RAZORPAY_KEY_ID as DEFAULT_KEY_ID, MARKETING_URL } from '../../config/env';
-
-// Helper to inject Razorpay checkout.js script
-const loadRazorpayScript = (): Promise<boolean> => {
-  return new Promise((resolve) => {
-    if ((window as any).Razorpay) {
-      resolve(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-};
+import { loadRazorpayScript } from '../../services/razorpay.service';
 
 export interface PlanItem {
   id: number;
@@ -315,7 +300,7 @@ export default function RegisterCheckoutView() {
       }
 
       const session = await response.json();
-      await launchRazorpayCheckout(session.token, session.subscriptionId, session.amount);
+      await launchRazorpayCheckout(session);
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected error occurred.');
       setLoading(false);
@@ -357,7 +342,17 @@ export default function RegisterCheckoutView() {
     }
   };
 
-  const launchRazorpayCheckout = async (token: string, subId: string, amount: number) => {
+  const launchRazorpayCheckout = async (session: {
+    token: string;
+    orderId?: string;
+    subscriptionId?: string;
+    keyId?: string;
+    amount: number;
+    amountInPaise?: number;
+    currency?: string;
+    planName?: string;
+    merchantName?: string;
+  }) => {
     const scriptLoaded = await loadRazorpayScript();
     if (!scriptLoaded) {
       setErrorMessage('Failed to load Razorpay payment client. Please check your network connection.');
@@ -366,55 +361,101 @@ export default function RegisterCheckoutView() {
     }
 
     const currentPlan = getSelectedPlan();
+    const keyToUse = (session.keyId || razorpayKey || DEFAULT_KEY_ID || '').trim();
+    const calculatedAmount = session.amountInPaise || Math.round(session.amount * 100);
 
     const options: any = {
-      key: razorpayKey.trim(),
-      name: 'BillCom POS',
-      description: `Subscription: ${currentPlan.name} (${billingCycle})`,
+      key: keyToUse,
+      name: session.merchantName || 'BillCom POS',
+      description: `${session.planName || currentPlan.name} Subscription (${billingCycle === 'yearly' ? 'Annual' : 'Monthly'})`,
       image: 'https://billcom.app/assets/BillCom-B.png',
+      order_id: session.orderId,
+      amount: calculatedAmount,
+      currency: session.currency || 'INR',
       handler: async (response: any) => {
         await verifyPayment(
-          token,
-          subId,
+          session.token,
+          session.subscriptionId || '',
           response.razorpay_payment_id || '',
           response.razorpay_signature || '',
-          response.razorpay_order_id
+          response.razorpay_order_id || session.orderId
         );
       },
       prefill: {
-        name: formData.username || 'Store Owner',
+        name: formData.legalName || formData.username || 'Store Owner',
         email: formData.email,
         contact: formData.businessPhone || '',
       },
+      notes: {
+        registration_token: session.token,
+        plan_id: String(planId),
+        plan_name: session.planName || currentPlan.name,
+        billing_cycle: billingCycle,
+        business_legal_name: formData.legalName,
+        merchant_email: formData.email
+      },
       theme: {
         color: '#006a61',
+        backdrop_color: 'rgba(15, 23, 42, 0.65)'
       },
       modal: {
+        confirm_close: true,
+        backdropclose: false,
+        escape: true,
+        handleback: true,
+        animation: true,
         ondismiss: async () => {
-          setLoading(true);
+          setLoading(false);
           try {
             await fetch(`${API_BASE_URL}/registration/mark-failed`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ token: token, reason: 'Payment modal dismissed by user' }),
+              body: JSON.stringify({
+                token: session.token,
+                reason: 'Payment checkout window closed by user.'
+              }),
             });
           } catch (e) {
-            console.error('Failed to notify backend of payment cancellation', e);
+            console.warn('Failed to notify backend of payment cancellation', e);
           }
-          setErrorMessage('Payment setup was cancelled. You can retry anytime.');
-          setLoading(false);
+          setErrorMessage('Payment window was closed. Your details have been preserved so you can resume whenever you are ready.');
         },
       },
+      retry: {
+        enabled: true,
+        max_count: 3
+      }
     };
 
-    if (subId && !subId.startsWith('sub_simulated_')) {
-      options.subscription_id = subId;
-    } else {
-      options.amount = Math.round(amount * 100);
-      options.currency = 'INR';
+    if (session.subscriptionId && !session.subscriptionId.startsWith('sub_simulated_') && !session.orderId) {
+      options.subscription_id = session.subscriptionId;
     }
 
     const rzp = new (window as any).Razorpay(options);
+
+    // Official Razorpay failure event handling
+    rzp.on('payment.failed', async (failResponse: any) => {
+      setLoading(false);
+      const error = failResponse?.error || {};
+      const failureDesc = error.description || error.reason || 'Payment could not be completed by your bank.';
+      const errorCode = error.code ? `[${error.code}] ` : '';
+
+      try {
+        await fetch(`${API_BASE_URL}/registration/mark-failed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: session.token,
+            reason: `Razorpay Error ${errorCode}${failureDesc} (Source: ${error.source || 'N/A'}, Step: ${error.step || 'N/A'})`
+          }),
+        });
+      } catch (e) {
+        console.warn('Failed to notify backend of payment failure telemetry', e);
+      }
+
+      setErrorMessage(`Payment Failed: ${failureDesc}. Please check your payment details or try an alternate payment method.`);
+    });
+
     rzp.open();
   };
 
@@ -497,9 +538,17 @@ export default function RegisterCheckoutView() {
         
         {/* Navigation Topbar */}
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <Link to="/" className="flex items-center gap-2 cursor-pointer">
-            <img src={logo} alt="BillCom" className="h-8 w-auto object-contain" />
-          </Link>
+          <a 
+            href={MARKETING_URL}
+            title="BillCom Home" 
+            className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-opacity"
+          >
+            <img 
+              src={logoText} 
+              alt="BillCom GST Billing Software" 
+              className="h-8 md:h-9 w-auto object-contain" 
+            />
+          </a>
           
           <div className="flex items-center gap-4 text-xs font-bold">
             <a 

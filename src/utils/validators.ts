@@ -1,9 +1,25 @@
-export const isValidEmail = (email: string): boolean => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
-export const isValidPhone = (phone: string): boolean => {
-  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-  return phone.length >= 4 && phoneRegex.test(phone.replace(/[\s()-]/g, ''));
-};
+// Backward-compatible re-exports. Prefer importing from './validation' for new code.
+export {
+  isValidEmail,
+  isValidPhoneIntl as isValidPhone,
+  isValidPhoneIN,
+  isValidGstin,
+  isValidPan,
+  isValidPincode,
+  isValidIfsc,
+  isValidUpi,
+  isValidVehicleNo,
+  isValidUsername,
+  isPositiveAmount,
+  isNonNegativeAmount,
+  emailError,
+  phoneINError,
+  gstinError,
+  panError,
+  pincodeError,
+  ifscError,
+  upiError,
+  amountError,
+  required,
+  PATTERNS,
+} from './validation';

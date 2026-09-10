@@ -26,6 +26,13 @@ import { customerService } from '../../services/customer.service';
 import { billService } from '../../services/bill.service';
 import { businessService } from '../../services/business.service';
 import { useToast } from '../../hooks/useToast';
+import {
+  emailError,
+  phoneINError,
+  gstinError,
+  amountError,
+  required,
+} from '../../utils/validation';
 
 export default function Customers() {
   const { showToast } = useToast();
@@ -88,7 +95,44 @@ export default function Customers() {
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    const nameErr = required(name, 'Customer name');
+    if (nameErr) {
+      showToast(nameErr, 'error');
+      return;
+    }
+    const phoneErr = phoneINError(phone, { required: true });
+    if (phoneErr) {
+      showToast(phoneErr, 'error');
+      return;
+    }
+    if (email.trim()) {
+      const mailErr = emailError(email, { required: false });
+      if (mailErr) {
+        showToast(mailErr, 'error');
+        return;
+      }
+    }
+    if (gstin.trim()) {
+      const gErr = gstinError(gstin, { required: false });
+      if (gErr) {
+        showToast(gErr, 'error');
+        return;
+      }
+    }
+    if (creditLimit.trim()) {
+      const cErr = amountError(creditLimit, { required: false, allowZero: true, field: 'Credit limit' });
+      if (cErr) {
+        showToast(cErr, 'error');
+        return;
+      }
+    }
+    if (openingBalance.trim()) {
+      const oErr = amountError(openingBalance, { required: false, allowZero: true, field: 'Opening balance' });
+      if (oErr) {
+        showToast(oErr, 'error');
+        return;
+      }
+    }
 
     const opBalNum = openingBalance ? Number(openingBalance) : 0;
     const finalOpBal = openingBalanceType === 'receive' ? opBalNum : -opBalNum;
@@ -252,7 +296,11 @@ export default function Customers() {
                 <div>
                   <label className="text-[10px] font-bold text-[#7c839b] uppercase block mb-1">Phone / Mobile Number *</label>
                   <input 
-                    type="text" 
+                    type="tel"
+                    inputMode="tel"
+                    pattern="[6-9][0-9]{9}"
+                    maxLength={13}
+                    title="Enter a valid 10-digit mobile number starting with 6-9."
                     value={phone} 
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="10-digit phone for WhatsApp reminders" 

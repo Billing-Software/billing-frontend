@@ -103,15 +103,7 @@ export const subscriptionService = {
   },
 
   upgradeSubscription: async (data: UpgradeSubscriptionRequest): Promise<any> => {
-    try {
-      const response = await apiClient.post('/subscription/upgrade', data);
-      return response.data;
-    } catch (err: any) {
-      console.warn('[subscriptionService.upgradeSubscription] simulated fallback', err);
-      return {
-        message: 'Subscription updated successfully.',
-        activePlanId: data.planId
-      };
-    }
+    const response = await apiClient.post('/subscription/upgrade', data);
+    return response.data;
   }
 };

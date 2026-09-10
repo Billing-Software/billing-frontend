@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { CreditCard, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { razorpayService, loadRazorpayScript } from '../services/razorpay.service';
 import { useToast } from '../hooks/useToast';
-import { RAZORPAY_KEY_ID } from '../config/env';
 
 export interface RazorpayCheckoutButtonProps {
+  /** Server-authorized subscription plan. Arbitrary client-side amounts are not accepted. */
+  planId: number;
+  billingCycle: 'monthly' | 'yearly';
   amount: number; // In rupees or paise (see amountInPaise prop)
   amountInPaise?: boolean; // Set true if amount is already in paise, false if in Rupees (default false)
   currency?: string; // Default 'INR'
@@ -32,6 +34,8 @@ export interface RazorpayCheckoutButtonProps {
 
 export const RazorpayCheckoutButton: React.FC<RazorpayCheckoutButtonProps> = ({
   amount,
+  planId,
+  billingCycle,
   amountInPaise = false,
   currency = 'INR',
   receipt,
@@ -72,13 +76,13 @@ export const RazorpayCheckoutButton: React.FC<RazorpayCheckoutButtonProps> = ({
 
       // 2. Fetch Razorpay public key ID
       const config = await razorpayService.getConfig();
-      const keyId = config.keyId || RAZORPAY_KEY_ID || '';
+      const keyId = config.keyId;
+      if (!keyId) throw new Error('Secure payment gateway configuration is unavailable.');
 
       // 3. STEP 1: Call Backend to Create Order (POST /api/create-order)
       const order = await razorpayService.createOrder({
-        amount: calculatedPaise,
-        currency,
-        receipt: receipt || `rcpt_${Date.now()}`
+        planId,
+        billingCycle
       });
 
       if (!order || !order.order_id) {
@@ -92,6 +96,7 @@ export const RazorpayCheckoutButton: React.FC<RazorpayCheckoutButtonProps> = ({
         currency: order.currency || currency,
         name,
         description,
+        image: 'https://billcom.app/assets/BillCom-B.png',
         order_id: order.order_id,
         prefill: {
           name: prefill?.name || '',
@@ -99,14 +104,24 @@ export const RazorpayCheckoutButton: React.FC<RazorpayCheckoutButtonProps> = ({
           contact: prefill?.contact || ''
         },
         theme: {
-          color: themeColor
+          color: themeColor,
+          backdrop_color: 'rgba(15, 23, 42, 0.65)'
         },
         modal: {
+          confirm_close: true,
+          backdropclose: false,
+          escape: true,
+          handleback: true,
+          animation: true,
           ondismiss: () => {
             setLoading(false);
             showToast('Payment window was closed. Transaction cancelled.', 'info');
             if (onDismiss) onDismiss();
           }
+        },
+        retry: {
+          enabled: true,
+          max_count: 3
         },
         handler: async (response: {
           razorpay_payment_id: string;
@@ -150,8 +165,10 @@ export const RazorpayCheckoutButton: React.FC<RazorpayCheckoutButtonProps> = ({
       // Handle payment.failed event
       rzp.on('payment.failed', (failResponse: any) => {
         setLoading(false);
-        const desc = failResponse?.error?.description || failResponse?.error?.reason || 'Payment could not be completed.';
-        showToast(`Payment Failed: ${desc}`, 'error');
+        const error = failResponse?.error || {};
+        const desc = error.description || error.reason || 'Payment could not be completed.';
+        const code = error.code ? `[${error.code}] ` : '';
+        showToast(`Payment Failed: ${code}${desc}`, 'error');
         if (onFailure) onFailure(failResponse);
       });
 
