@@ -21,7 +21,9 @@ import Onboarding from '../pages/Onboarding/Onboarding';
 import SuperAdminDashboard from '../pages/SuperAdmin/SuperAdminDashboard';
 import Branches from '../pages/Branches/Branches';
 import PublicStorefront from '../pages/Store/PublicStorefront';
+import RegisterCheckoutView from '../pages/Checkout/RegisterCheckoutView';
 import { useBusinessConfig } from '../context/BusinessConfigContext';
+import { MARKETING_URL } from '../config/env';
 
 interface AppRoutesProps {
   searchText: string;
@@ -68,16 +70,14 @@ function Help() {
   );
 }
 
-const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || '';
-
 function ExternalRedirect({ url }: { url: string }) {
   React.useEffect(() => {
-    window.location.href = url;
+    window.location.replace(url);
   }, [url]);
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-slate-800">
       <div className="animate-spin rounded-full h-8 w-8 border-4 border-[#006a61] border-t-transparent mb-3"></div>
-      <p className="text-xs font-semibold text-slate-600">Redirecting to 7-Day Free Trial & Pricing...</p>
+      <p className="text-xs font-semibold text-slate-600">Redirecting to BillCom Pricing Plans...</p>
     </div>
   );
 }
@@ -116,12 +116,13 @@ export default function AppRoutes({
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<Login />} />
-      <Route path="/pricing" element={<ExternalRedirect url={`${MARKETING_URL}/#/pricing`} />} />
-      <Route path="/trial" element={<ExternalRedirect url={`${MARKETING_URL}/#/pricing`} />} />
-      <Route path="/register" element={<ExternalRedirect url={`${MARKETING_URL}/#/pricing`} />} />
+      <Route path="/pricing" element={<ExternalRedirect url={`${MARKETING_URL}/pricing`} />} />
+      <Route path="/trial" element={<RegisterCheckoutView />} />
+      <Route path="/register" element={<RegisterCheckoutView />} />
       <Route path="/autologin" element={<AutoLogin />} />
       <Route path="/shop" element={<PublicStorefront />} />
       <Route path="/shop/:slug" element={<PublicStorefront />} />
+      <Route path="/checkout" element={<RegisterCheckoutView />} />
       <Route 
         path="/onboarding" 
         element={
@@ -184,6 +185,7 @@ export default function AppRoutes({
         <Route path="settings" element={hasFeature('settings') ? <Settings /> : <Navigate to="/dashboard" replace />} />
         <Route path="subscription" element={<Navigate to="/settings?tab=subscription" replace />} />
         <Route path="expenses" element={hasFeature('expenses') ? <Expenses /> : <Navigate to="/dashboard" replace />} />
+        <Route path="checkout" element={<Navigate to="/settings?tab=subscription" replace />} />
 
         <Route path="help" element={<Help />} />
         

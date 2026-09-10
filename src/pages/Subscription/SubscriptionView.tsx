@@ -29,9 +29,11 @@ import {
   CheckCheck
 } from 'lucide-react';
 import { subscriptionService, DEFAULT_PLANS } from '../../services/subscription.service';
+import { razorpayService, loadRazorpayScript } from '../../services/razorpay.service';
 import { SubscriptionOverview, SubscriptionPlan } from '../../types/subscription.types';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
+import { RAZORPAY_KEY_ID } from '../../config/env';
 
 export default function SubscriptionView() {
   const { showToast } = useToast();
@@ -61,26 +63,47 @@ export default function SubscriptionView() {
     loadData();
   }, []);
 
-  const handleRazorpayPayment = () => {
+  const handleRazorpayPayment = async () => {
     if (!upgradeModalPlan) return;
     const basePrice = billingCycle === 'yearly' ? upgradeModalPlan.yearlyPrice : upgradeModalPlan.monthlyPrice;
     const gst = Math.round(basePrice * 0.18);
     const total = basePrice + gst;
-
-    if (typeof (window as any).Razorpay === 'undefined') {
-      showToast('Razorpay payment gateway is loading. Please wait 2 seconds.', 'info');
-      return;
-    }
+    const amountInPaise = total * 100;
 
     try {
       setIsProcessingUpgrade(true);
-      const rzpKey = (import.meta as any).env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TOC2CA6GYJnxxx';
-      const rzp = new (window as any).Razorpay({
-        key: rzpKey,
-        amount: total * 100, // in paise
+
+      // 1. Ensure Razorpay checkout.js script is loaded
+      const scriptReady = await loadRazorpayScript();
+      if (!scriptReady || typeof (window as any).Razorpay === 'undefined') {
+        showToast('Razorpay payment gateway is loading. Please wait 2 seconds.', 'info');
+        setIsProcessingUpgrade(false);
+        return;
+      }
+
+      // 2. Fetch Razorpay public key ID & config
+      const config = await razorpayService.getConfig();
+      const rzpKey = config.keyId || RAZORPAY_KEY_ID || '';
+
+      // 3. STEP 1: Call Backend to Create Order (POST /api/create-order)
+      const order = await razorpayService.createOrder({
+        amount: amountInPaise,
         currency: 'INR',
+        receipt: `sub_${upgradeModalPlan.id}_${Date.now()}`
+      });
+
+      if (!order || !order.order_id) {
+        throw new Error('Failed to obtain a valid Razorpay order from the server.');
+      }
+
+      // 4. STEP 2: Configure and open Razorpay modal with server-generated order_id
+      const rzp = new (window as any).Razorpay({
+        key: rzpKey.trim(),
+        amount: order.amount,
+        currency: order.currency || 'INR',
         name: 'BillCom POS',
         description: `${upgradeModalPlan.name} Subscription (${billingCycle === 'yearly' ? 'Annual' : 'Monthly'})`,
+        order_id: order.order_id,
         prefill: {
           name: currentUser?.name || currentUser?.username || 'BillCom Merchant',
           email: currentUser?.email || 'merchant@billcom.in',
@@ -92,42 +115,61 @@ export default function SubscriptionView() {
         modal: {
           ondismiss: () => {
             setIsProcessingUpgrade(false);
-            showToast('Payment cancelled by user. Subscription was not upgraded.', 'info');
+            showToast('Payment window closed. Subscription was not upgraded.', 'info');
           }
         },
-        handler: async (response: any) => {
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
           try {
-            const paymentId = response.razorpay_payment_id || `pay_rzp_${Date.now()}`;
+            // 5. STEP 3: Cryptographic verification on backend (POST /api/verify-payment)
+            const verification = await razorpayService.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            });
+
+            if (!verification || !verification.success) {
+              throw new Error(verification?.message || 'Payment signature verification failed.');
+            }
+
+            // Record verified subscription upgrade in the database
             await subscriptionService.upgradeSubscription({
               planId: upgradeModalPlan.id,
               billingCycle,
               paymentMethod: 'Razorpay',
-              razorpayPaymentId: paymentId,
+              razorpayPaymentId: response.razorpay_payment_id,
               razorpayOrderId: response.razorpay_order_id,
               razorpaySignature: response.razorpay_signature
             });
 
-            showToast(`Payment of ₹${total} received! Upgraded to ${upgradeModalPlan.name}!`, 'success');
+            showToast(`Payment of ₹${total} verified! Upgraded to ${upgradeModalPlan.name}!`, 'success');
             setUpgradeModalPlan(null);
             await loadData();
             window.dispatchEvent(new Event('subscription_updated'));
           } catch (err: any) {
-            showToast('Activation failed: ' + (err.message || 'Unknown error'), 'error');
+            const errorDesc = err?.response?.data?.message || err.message || 'Payment activation failed.';
+            showToast('Activation failed: ' + errorDesc, 'error');
           } finally {
             setIsProcessingUpgrade(false);
           }
         }
       });
 
+      // Handle payment.failed event
       rzp.on('payment.failed', (response: any) => {
         setIsProcessingUpgrade(false);
-        showToast(`Payment declined: ${response.error?.description || 'Transaction failed'}`, 'error');
+        const failDesc = response.error?.description || response.error?.reason || 'Transaction failed.';
+        showToast(`Payment declined: ${failDesc}`, 'error');
       });
 
       rzp.open();
     } catch (err: any) {
       setIsProcessingUpgrade(false);
-      showToast('Payment initialization error: ' + (err.message || 'Unknown error'), 'error');
+      const errDetail = err?.response?.data?.message || err.message || 'Unknown error';
+      showToast('Payment initialization error: ' + errDetail, 'error');
     }
   };
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
   Lock, 
   Mail, 
@@ -22,7 +22,7 @@ import { authService } from '../../../services/auth.service';
 import { apiClient } from '../../../services/api.client';
 import logo from '../../../assets/BillCom-full.svg';
 
-const MARKETING_URL = (import.meta as any).env?.VITE_MARKETING_URL || '';
+import { MARKETING_URL } from '../../../config/env';
 
 interface AuthViewProps {
   onLoginSuccess: (user: User) => void;
@@ -927,14 +927,25 @@ export default function AuthView({ onLoginSuccess }: AuthViewProps) {
             </div>
 
             {authMode === 'login' && (
-              <div className="text-center pt-2.5 border-t border-[#f1f5f9] w-full">
-                <span className="text-[11px] text-slate-400 font-semibold">New to BillCom? </span>
-                <a 
-                  href={`${MARKETING_URL}/#/pricing`}
-                  className="text-[11px] text-[#006a61] hover:underline font-bold transition-all"
-                >
-                  ⚡ Start 7-Day Free Trial
-                </a>
+              <div className="text-center pt-2.5 border-t border-[#f1f5f9] w-full flex flex-col gap-1.5 items-center">
+                <div>
+                  <span className="text-[11px] text-slate-400 font-semibold">New to BillCom? </span>
+                  <Link 
+                    to="/checkout?trial=true"
+                    className="text-[11px] text-[#006a61] hover:underline font-bold transition-all"
+                  >
+                    ⚡ Start 7-Day Free Trial
+                  </Link>
+                </div>
+                <div>
+                  <a 
+                    href={`${MARKETING_URL}/pricing`}
+                    className="text-[11px] text-slate-500 hover:text-slate-800 font-semibold transition-all hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>View Subscription Plans &amp; Pricing</span>
+                    <ArrowRight size={11} />
+                  </a>
+                </div>
               </div>
             )}
           </div>

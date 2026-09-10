@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { superAdminService } from '../../services/superadmin.service';
 import { useAuth } from '../../hooks/useAuth';
+import { MARKETING_URL } from '../../config/env';
 
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
@@ -71,8 +72,7 @@ export default function SuperAdminDashboard() {
   };
 
   const handleCopyLink = (token: string) => {
-    const marketingUrl = (import.meta as any).env?.VITE_MARKETING_URL || '';
-    const resumeUrl = `${marketingUrl}/#/checkout/resume?token=${token}`;
+    const resumeUrl = `${MARKETING_URL}/#/checkout/resume?token=${token}`;
     navigator.clipboard.writeText(resumeUrl);
     alert('Checkout recovery magic link copied to clipboard!');
   };
